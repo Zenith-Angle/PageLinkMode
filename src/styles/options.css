@@ -10,6 +10,40 @@
   padding: 20px;
 }
 
+.config-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.secondary-button {
+  background: #fff;
+  color: #0f172a;
+}
+
+.secondary-button:hover {
+  background: #f8fafc;
+}
+
+.status-message {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.status-message[data-tone="success"] {
+  background: rgba(34, 197, 94, 0.12);
+  color: #166534;
+}
+
+.status-message[data-tone="error"] {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+
 .section-head {
   display: flex;
   align-items: center;

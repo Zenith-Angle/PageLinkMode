@@ -1,6 +1,6 @@
 {
   "name": "pagelinkmode",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "private": true,
   "description": "Chrome MV3 扩展：接管网页内链接跳转，支持全局、站点和单页规则。",
   "scripts": {

@@ -1,10 +1,10 @@
 body {
-  width: 360px;
+  width: 368px;
 }
 
 .panel {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   padding: 16px;
 }
 
@@ -60,29 +60,56 @@ body {
   color: #1e293b;
 }
 
-.icon-button {
+.toolbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(255, 255, 255, 0.84);
+  color: #334155;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.toolbar-action:hover {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.toolbar-action-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  min-height: 42px;
-  padding: 0;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(255, 255, 255, 0.76);
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.78);
   color: #64748b;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
 }
 
-.icon-button:hover {
-  background: rgba(255, 255, 255, 0.92);
-  color: #334155;
-}
-
-.icon-button svg {
-  width: 19px;
-  height: 19px;
+.toolbar-action-icon svg {
+  width: 14px;
+  height: 14px;
   fill: currentColor;
+}
+
+.toolbar-action-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.save-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  background: linear-gradient(180deg, rgba(240, 249, 255, 0.94), rgba(255, 255, 255, 0.9));
+  color: #0f766e;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 10px 22px rgba(14, 116, 144, 0.08);
 }
 
 .card {
@@ -221,40 +248,19 @@ body {
   background: #166534;
 }
 
-.site-switch-card {
+.rule-card {
   gap: 16px;
   padding: 18px;
 }
 
-.advanced-card {
-  gap: 16px;
-  padding: 18px;
-  background: rgba(248, 250, 252, 0.72);
-}
-
-.advanced-block {
-  display: grid;
-  gap: 12px;
-  padding: 14px 14px 0;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-}
-
-.global-block {
-  padding-bottom: 14px;
-}
-
-.section-head,
-.inline-head {
+.rule-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-.section-head h2,
-.inline-head h2 {
+.rule-card-head h2 {
   margin: 2px 0 0;
   font-size: 19px;
   line-height: 1.1;
@@ -269,6 +275,10 @@ body {
   line-height: 1.45;
   font-weight: 500;
   color: #64748b;
+}
+
+.global-helper-text {
+  max-width: 270px;
 }
 
 .switch {
@@ -322,28 +332,28 @@ body {
   transform: translateX(58px);
 }
 
-.switch-small {
-  width: 76px;
-  min-height: 42px;
+.switch-compact {
+  width: 84px;
+  min-height: 44px;
 }
 
-.switch-small .switch-track {
-  width: 76px;
-  height: 34px;
+.switch-compact .switch-track {
+  width: 84px;
+  height: 38px;
 }
 
-.switch-small .switch-thumb {
-  top: 3px;
-  left: 3px;
-  width: 28px;
-  height: 28px;
+.switch-compact .switch-thumb {
+  top: 4px;
+  left: 4px;
+  width: 30px;
+  height: 30px;
   box-shadow:
     0 10px 18px rgba(15, 23, 42, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
-.switch-small.is-on .switch-thumb {
-  transform: translateX(42px);
+.switch-compact.is-on .switch-thumb {
+  transform: translateX(46px);
 }
 
 .switch:disabled {
@@ -358,8 +368,8 @@ body {
 }
 
 .segmented button {
-  min-height: 44px;
-  padding: 0 12px;
+  min-height: 46px;
+  padding: 0 14px;
   border-radius: 14px;
   border: 1px solid rgba(203, 213, 225, 0.9);
   background: rgba(255, 255, 255, 0.7);
@@ -387,7 +397,7 @@ body {
 }
 
 .segmented.compact button {
-  min-height: 40px;
+  min-height: 46px;
 }
 
 .segmented.is-disabled {

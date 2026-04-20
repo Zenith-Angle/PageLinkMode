@@ -38,3 +38,21 @@ export function isHashOnlyNavigation(currentUrl: string, nextUrl: string): boole
 export function buildPermissionPatterns(hostname: string): string[] {
   return [`http://${hostname}/*`, `https://${hostname}/*`];
 }
+
+export function buildPermissionPatternForUrl(rawUrl: string): string {
+  const parsed = new URL(rawUrl);
+  return `${parsed.protocol}//${parsed.hostname}/*`;
+}
+
+export function extractHostnameFromPermissionPattern(pattern: string): string | null {
+  if (pattern === "<all_urls>") {
+    return "*";
+  }
+
+  const matched = pattern.match(/^(?:\*|https?):\/\/([^/]+)\/\*$/i);
+  if (!matched) {
+    return null;
+  }
+
+  return matched[1].toLowerCase();
+}

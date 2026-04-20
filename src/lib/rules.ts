@@ -73,5 +73,6 @@ export function buildUnsupportedPopupContext(rawUrl: string): PopupContext {
     effectiveMode: "same-tab",
     effectiveSource: "global",
     supported: false,
+    siteAuthorizationRecorded: false,
   };
 }

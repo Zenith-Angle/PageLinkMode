@@ -22,6 +22,7 @@ export interface ResolvedContext {
 
 export interface PopupContext extends ResolvedContext {
   supported: boolean;
+  siteAuthorizationRecorded: boolean;
 }
 
 export interface BridgeWindowOpenMessage {

@@ -25,6 +25,21 @@
 
       <section class="card">
         <div class="section-head">
+          <div>
+            <h2>配置备份</h2>
+            <p class="subtle">导出当前完整配置，或从 JSON 文件整份恢复。</p>
+          </div>
+        </div>
+        <div class="config-actions">
+          <button id="export-config" type="button">导出配置</button>
+          <button id="import-config" type="button" class="secondary-button">导入配置</button>
+          <input id="import-config-input" type="file" accept=".json,application/json" hidden />
+        </div>
+        <p id="config-status" class="status-message" role="status" aria-live="polite" hidden></p>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
           <h2>站点规则</h2>
           <span id="site-count">0 条</span>
         </div>

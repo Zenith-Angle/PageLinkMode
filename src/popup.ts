@@ -1,9 +1,13 @@
 import "./styles/base.css";
 import "./styles/popup.css";
 
-import type { RuntimeRequest } from "./lib/messages";
+import type { RuntimeRequest, RuntimeResponse } from "./lib/messages";
 import type { NavigationMode, PopupContext, RuleMode } from "./lib/types";
-import { buildPermissionPatterns, isSupportedPageUrl } from "./lib/url";
+import {
+  buildPermissionPatternForUrl,
+  buildPermissionPatterns,
+  isSupportedPageUrl,
+} from "./lib/url";
 
 interface PopupUiState {
   isSiteOverrideEnabled: boolean;
@@ -11,6 +15,8 @@ interface PopupUiState {
   siteSelection: NavigationMode;
   pageSelection: NavigationMode;
 }
+
+type PageAccessState = "ready" | "pending" | "unavailable";
 
 const statusCard = document.querySelector<HTMLElement>("#status-card");
 const statusText = document.querySelector<HTMLParagraphElement>("#status-text");
@@ -20,10 +26,14 @@ const effectiveValue = document.querySelector<HTMLElement>("#effective-value");
 const sourceValue = document.querySelector<HTMLElement>("#source-value");
 const statusChip = document.querySelector<HTMLElement>("#status-chip");
 const permissionCard = document.querySelector<HTMLElement>("#permission-card");
+const permissionTitle = document.querySelector<HTMLElement>("#permission-title");
+const permissionDescription = document.querySelector<HTMLElement>("#permission-description");
 const grantAccessButton = document.querySelector<HTMLButtonElement>("#grant-access");
 const openOptionsButton = document.querySelector<HTMLButtonElement>("#open-options");
+const saveNote = document.querySelector<HTMLElement>("#save-note");
 const siteSection = document.querySelector<HTMLElement>("#site-section");
-const advancedSection = document.querySelector<HTMLElement>("#advanced-section");
+const pageSection = document.querySelector<HTMLElement>("#page-section");
+const globalSection = document.querySelector<HTMLElement>("#global-section");
 const siteOverrideToggle = document.querySelector<HTMLButtonElement>("#site-override-toggle");
 const pageOverrideToggle = document.querySelector<HTMLButtonElement>("#page-override-toggle");
 const siteModeGroup = document.querySelector<HTMLElement>("#site-mode-group");
@@ -34,8 +44,11 @@ const pageHelperText = document.querySelector<HTMLElement>("#page-helper-text");
 
 let activeTabId: number | undefined;
 let currentContext: PopupContext | null = null;
-let permissionGranted = false;
+let pageAccessState: PageAccessState = "unavailable";
 let currentUiState: PopupUiState | null = null;
+let lastPermissionRequestSucceeded = false;
+let sitePermissionGranted = false;
+let saveNoteTimeoutId: number | undefined;
 
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
@@ -51,14 +64,14 @@ async function initializePopup(): Promise<void> {
     return;
   }
 
-  permissionGranted = await chrome.permissions.contains({
-    origins: buildPermissionPatterns(new URL(tab.url).hostname),
-  });
-
   currentContext = (await chrome.runtime.sendMessage({
     type: "plm:get-popup-context",
     url: tab.url,
   } as RuntimeRequest)) as PopupContext;
+  sitePermissionGranted =
+    currentContext.siteAuthorizationRecorded ||
+    (await resolvePersistentSitePermissionState(currentContext.url, currentContext.hostname));
+  pageAccessState = await resolvePageAccessState(tab.id);
 
   currentUiState = derivePopupUiState(currentContext);
   renderContext(currentContext, currentUiState);
@@ -66,7 +79,7 @@ async function initializePopup(): Promise<void> {
 
 function bindEvents(): void {
   grantAccessButton?.addEventListener("click", () => {
-    void requestSitePermission();
+    void handlePermissionAction();
   });
   openOptionsButton?.addEventListener("click", () => {
     void chrome.runtime.openOptionsPage();
@@ -81,6 +94,16 @@ function bindEvents(): void {
   bindSegmentedGroup(globalModeGroup, (mode) => setGlobalMode(mode));
   bindSegmentedGroup(siteModeGroup, (mode) => setSiteExplicitMode(mode));
   bindSegmentedGroup(pageModeGroup, (mode) => setPageExplicitMode(mode));
+}
+
+async function handlePermissionAction(): Promise<void> {
+  if (sitePermissionGranted && activeTabId) {
+    await reloadTabAndWait(activeTabId);
+    await initializePopup();
+    return;
+  }
+
+  await requestSitePermission();
 }
 
 function bindSegmentedGroup(
@@ -121,12 +144,17 @@ function renderUnsupported(): void {
   statusText!.textContent = "当前页面不支持接管，例如 chrome:// 页面、扩展页或商店页面。";
   permissionCard!.hidden = true;
   siteSection!.hidden = true;
-  advancedSection!.hidden = true;
+  pageSection!.hidden = true;
+  globalSection!.hidden = true;
 }
 
 function renderContext(context: PopupContext, uiState: PopupUiState): void {
+  const pageReady = pageAccessState === "ready";
+  const canEditRule = sitePermissionGranted;
+
   siteSection!.hidden = false;
-  advancedSection!.hidden = false;
+  pageSection!.hidden = false;
+  globalSection!.hidden = false;
   statusCard?.classList.remove("is-unsupported");
 
   hostValue!.textContent = context.hostname;
@@ -136,14 +164,13 @@ function renderContext(context: PopupContext, uiState: PopupUiState): void {
   statusChip!.textContent = context.effectiveMode === "same-tab" ? "当前页" : "新标签";
   statusChip!.dataset.state = context.effectiveMode === "same-tab" ? "same" : "new";
 
-  statusText!.textContent = permissionGranted
-    ? renderStatusDescription(context)
-    : "规则已经准备好，但需要先授权当前站点，插件才能真正接管网页跳转。";
+  statusText!.textContent = renderAccessDescription(context, pageAccessState, sitePermissionGranted);
+  renderPermissionState(pageAccessState, sitePermissionGranted);
 
-  permissionCard!.hidden = permissionGranted;
+  permissionCard!.hidden = sitePermissionGranted && pageReady;
 
-  updateSwitchState(siteOverrideToggle, uiState.isSiteOverrideEnabled, !permissionGranted);
-  updateSwitchState(pageOverrideToggle, uiState.isPageOverrideEnabled, !permissionGranted);
+  updateSwitchState(siteOverrideToggle, uiState.isSiteOverrideEnabled, !canEditRule);
+  updateSwitchState(pageOverrideToggle, uiState.isPageOverrideEnabled, !canEditRule);
 
   siteModeGroup!.hidden = !uiState.isSiteOverrideEnabled;
   pageModeGroup!.hidden = !uiState.isPageOverrideEnabled;
@@ -162,8 +189,8 @@ function renderContext(context: PopupContext, uiState: PopupUiState): void {
   );
 
   setSegmentedSelection(globalModeGroup, context.globalMode, false);
-  setSegmentedSelection(siteModeGroup, uiState.siteSelection, !permissionGranted);
-  setSegmentedSelection(pageModeGroup, uiState.pageSelection, !permissionGranted);
+  setSegmentedSelection(siteModeGroup, uiState.siteSelection, !canEditRule);
+  setSegmentedSelection(pageModeGroup, uiState.pageSelection, !canEditRule);
 }
 
 function renderStatusDescription(context: PopupContext): string {
@@ -176,6 +203,64 @@ function renderStatusDescription(context: PopupContext): string {
   }
 
   return "当前页面已启用独立规则，会优先覆盖站点和全局默认。";
+}
+
+function renderAccessDescription(
+  context: PopupContext,
+  accessState: PageAccessState,
+  hasSitePermission: boolean,
+): string {
+  if (hasSitePermission && accessState === "ready") {
+    return renderStatusDescription(context);
+  }
+
+  if (!hasSitePermission && accessState === "ready") {
+    return "当前页目前只是临时可访问。若要设置站点级和页面级规则，并让配置在后续访问中持续生效，请先授权当前站点。";
+  }
+
+  if (!hasSitePermission) {
+    return "当前站点尚未授权。授权后，才能设置站点级和页面级规则，并在后续访问中持续生效。";
+  }
+
+  if (accessState === "pending") {
+    return "当前站点已经授权。请刷新当前页面后继续，扩展会在刷新后重新接管这里的网页跳转。";
+  }
+
+  return "当前站点已经授权，但当前页还没有被扩展接管。请刷新当前页面后再试。";
+}
+
+function renderPermissionState(accessState: PageAccessState, hasSitePermission: boolean): void {
+  if (!permissionTitle || !permissionDescription || !grantAccessButton) {
+    return;
+  }
+
+  if (!hasSitePermission && accessState === "ready") {
+    permissionTitle.textContent = "当前站点尚未授权";
+    permissionDescription.textContent =
+      "当前标签页现在只是临时可访问。若要设置站点级和页面级规则，请先授权当前站点。";
+    grantAccessButton.textContent = "授权当前站点";
+    return;
+  }
+
+  if (!hasSitePermission) {
+    permissionTitle.textContent = "当前站点未授权";
+    permissionDescription.textContent =
+      "授权后，才能设置站点级和页面级规则，并在后续访问中持续生效。";
+    grantAccessButton.textContent = "授权当前站点";
+    return;
+  }
+
+  if (accessState !== "ready") {
+    permissionTitle.textContent = "当前站点已授权";
+    permissionDescription.textContent =
+      "站点授权已经完成，但当前页还没有被扩展重新接管。请刷新当前页面后继续。";
+    grantAccessButton.textContent = "刷新当前页面";
+    return;
+  }
+
+  permissionTitle.textContent = "当前站点已授权";
+  permissionDescription.textContent = "当前页面已经可以被扩展稳定接管。";
+  grantAccessButton.textContent = "授权当前站点";
 }
 
 function renderSourceText(source: PopupContext["effectiveSource"]): string {
@@ -234,19 +319,25 @@ async function requestSitePermission(): Promise<void> {
     return;
   }
 
-  permissionGranted = await chrome.permissions.request({
+  lastPermissionRequestSucceeded = await chrome.permissions.request({
     origins: buildPermissionPatterns(currentContext.hostname),
   });
 
-  if (permissionGranted && activeTabId) {
-    await chrome.tabs.reload(activeTabId);
+  if (lastPermissionRequestSucceeded) {
+    await chrome.runtime.sendMessage({
+      type: "plm:mark-site-authorized",
+      hostname: currentContext.hostname,
+    } as RuntimeRequest);
+    showSaveNote("站点已授权，刷新当前页面后生效。");
+  } else {
+    showSaveNote("未完成授权，站点级和页面级规则仍不可用。");
   }
 
   await initializePopup();
 }
 
 async function handleSiteOverrideToggle(): Promise<void> {
-  if (!currentContext || !currentUiState || !permissionGranted) {
+  if (!currentContext || !currentUiState || !sitePermissionGranted) {
     return;
   }
 
@@ -254,7 +345,7 @@ async function handleSiteOverrideToggle(): Promise<void> {
 }
 
 async function handlePageOverrideToggle(): Promise<void> {
-  if (!currentContext || !currentUiState || !permissionGranted) {
+  if (!currentContext || !currentUiState || !sitePermissionGranted) {
     return;
   }
 
@@ -268,7 +359,8 @@ async function toggleSiteOverride(enabled: boolean): Promise<void> {
 
   const mode = enabled ? currentUiState.siteSelection : "inherit";
   await sendRuleUpdate("plm:set-site-rule", currentContext.hostname, mode);
-  await refreshPopup();
+  await refreshPopup({ reloadTab: false });
+  showSaveNote("站点规则已保存，刷新当前页面后生效。");
 }
 
 async function togglePageOverride(enabled: boolean): Promise<void> {
@@ -278,25 +370,28 @@ async function togglePageOverride(enabled: boolean): Promise<void> {
 
   const mode = enabled ? currentUiState.pageSelection : "inherit";
   await sendRuleUpdate("plm:set-page-rule", currentContext.pageKey, mode);
-  await refreshPopup();
+  await refreshPopup({ reloadTab: false });
+  showSaveNote("页面规则已保存，刷新当前页面后生效。");
 }
 
 async function setSiteExplicitMode(mode: NavigationMode): Promise<void> {
-  if (!currentContext || !permissionGranted) {
+  if (!currentContext || !sitePermissionGranted) {
     return;
   }
 
   await sendRuleUpdate("plm:set-site-rule", currentContext.hostname, mode);
-  await refreshPopup();
+  await refreshPopup({ reloadTab: false });
+  showSaveNote("站点规则已保存，刷新当前页面后生效。");
 }
 
 async function setPageExplicitMode(mode: NavigationMode): Promise<void> {
-  if (!currentContext || !permissionGranted) {
+  if (!currentContext || !sitePermissionGranted) {
     return;
   }
 
   await sendRuleUpdate("plm:set-page-rule", currentContext.pageKey, mode);
-  await refreshPopup();
+  await refreshPopup({ reloadTab: false });
+  showSaveNote("页面规则已保存，刷新当前页面后生效。");
 }
 
 async function setGlobalMode(mode: NavigationMode): Promise<void> {
@@ -304,7 +399,8 @@ async function setGlobalMode(mode: NavigationMode): Promise<void> {
     type: "plm:set-global-mode",
     mode,
   } as RuntimeRequest);
-  await refreshPopup();
+  await refreshPopup({ reloadTab: false });
+  showSaveNote("默认跳转方式已保存，刷新当前页面后生效。");
 }
 
 async function sendRuleUpdate(
@@ -328,13 +424,105 @@ async function sendRuleUpdate(
   } as RuntimeRequest);
 }
 
-async function refreshPopup(): Promise<void> {
-  if (permissionGranted && activeTabId) {
-    await chrome.tabs.reload(activeTabId);
+async function refreshPopup(options?: { reloadTab?: boolean }): Promise<void> {
+  if (options?.reloadTab !== false && pageAccessState === "ready" && activeTabId) {
+    await reloadTabAndWait(activeTabId);
   }
   await initializePopup();
 }
 
 function getOppositeMode(mode: NavigationMode): NavigationMode {
   return mode === "same-tab" ? "new-tab" : "same-tab";
+}
+
+async function resolvePageAccessState(tabId?: number): Promise<PageAccessState> {
+  if (tabId === undefined) {
+    return lastPermissionRequestSucceeded ? "pending" : "unavailable";
+  }
+
+  try {
+    const response = (await chrome.tabs.sendMessage(tabId, {
+      type: "plm:ping-content",
+    } as RuntimeRequest)) as RuntimeResponse | undefined;
+
+    if (isOkResponse(response)) {
+      lastPermissionRequestSucceeded = false;
+      return "ready";
+    }
+  } catch {
+    // 当前页面没有可通信的 content script，视为尚未完成接管。
+  }
+
+  return lastPermissionRequestSucceeded ? "pending" : "unavailable";
+}
+
+async function resolvePersistentSitePermissionState(rawUrl: string, hostname: string): Promise<boolean> {
+  if (!rawUrl || !hostname) {
+    return false;
+  }
+
+  try {
+    const hasFullSitePermission = await chrome.permissions.contains({
+      origins: buildPermissionPatterns(hostname),
+    });
+    if (hasFullSitePermission) {
+      return true;
+    }
+
+    return await chrome.permissions.contains({
+      origins: [buildPermissionPatternForUrl(rawUrl)],
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function reloadTabAndWait(tabId: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    let finished = false;
+    const timeoutId = window.setTimeout(finish, 3000);
+
+    const handleUpdated = (updatedTabId: number, changeInfo: { status?: string }) => {
+      if (updatedTabId === tabId && changeInfo.status === "complete") {
+        finish();
+      }
+    };
+
+    function finish(): void {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+      window.clearTimeout(timeoutId);
+      chrome.tabs.onUpdated.removeListener(handleUpdated);
+      resolve();
+    }
+
+    chrome.tabs.onUpdated.addListener(handleUpdated);
+    void chrome.tabs.reload(tabId).catch(() => {
+      finish();
+    });
+  });
+}
+
+function isOkResponse(response: RuntimeResponse | undefined): response is { ok: true } {
+  return typeof response === "object" && response !== null && "ok" in response && response.ok === true;
+}
+
+function showSaveNote(message: string): void {
+  if (!saveNote) {
+    return;
+  }
+
+  saveNote.hidden = false;
+  saveNote.textContent = message;
+
+  if (saveNoteTimeoutId !== undefined) {
+    window.clearTimeout(saveNoteTimeoutId);
+  }
+
+  saveNoteTimeoutId = window.setTimeout(() => {
+    saveNote.hidden = true;
+  }, 2400);
 }

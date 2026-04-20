@@ -16,6 +16,10 @@ body {
   min-height: 100vh;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .hero h1,
 .section-head h2 {
   margin: 0;

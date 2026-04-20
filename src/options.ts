@@ -1,7 +1,7 @@
 import "./styles/base.css";
 import "./styles/options.css";
 
-import type { RuntimeRequest } from "./lib/messages";
+import type { RuntimeRequest, RuntimeResponse } from "./lib/messages";
 import type { ExtensionState, NavigationMode } from "./lib/types";
 
 const globalModeSelect = document.querySelector<HTMLSelectElement>("#options-global-mode");
@@ -9,6 +9,10 @@ const siteRulesContainer = document.querySelector<HTMLElement>("#site-rules");
 const pageRulesContainer = document.querySelector<HTMLElement>("#page-rules");
 const siteCount = document.querySelector<HTMLElement>("#site-count");
 const pageCount = document.querySelector<HTMLElement>("#page-count");
+const exportConfigButton = document.querySelector<HTMLButtonElement>("#export-config");
+const importConfigButton = document.querySelector<HTMLButtonElement>("#import-config");
+const importConfigInput = document.querySelector<HTMLInputElement>("#import-config-input");
+const configStatus = document.querySelector<HTMLElement>("#config-status");
 
 document.addEventListener("DOMContentLoaded", () => {
   void loadState();
@@ -22,13 +26,19 @@ function bindEvents(): void {
       mode: globalModeSelect.value as NavigationMode,
     } as RuntimeRequest);
   });
+  exportConfigButton?.addEventListener("click", () => {
+    void exportState();
+  });
+  importConfigButton?.addEventListener("click", () => {
+    importConfigInput?.click();
+  });
+  importConfigInput?.addEventListener("change", () => {
+    void importStateFromFile();
+  });
 }
 
 async function loadState(): Promise<void> {
-  const state = (await chrome.runtime.sendMessage({
-    type: "plm:get-state",
-  } as RuntimeRequest)) as ExtensionState;
-
+  const state = await getState();
   renderState(state);
 }
 
@@ -131,4 +141,80 @@ async function removeRule(kind: "site" | "page", key: string): Promise<void> {
 
   await chrome.runtime.sendMessage(message);
   await loadState();
+}
+
+async function exportState(): Promise<void> {
+  const state = await getState();
+  const blob = new Blob([`${JSON.stringify(state, null, 2)}\n`], {
+    type: "application/json",
+  });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = "pagelinkmode-config.json";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  setStatus("已导出当前配置。", "success");
+}
+
+async function importStateFromFile(): Promise<void> {
+  const file = importConfigInput?.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const content = await file.text();
+    let parsedState: unknown;
+
+    try {
+      parsedState = JSON.parse(content);
+    } catch {
+      setStatus("导入失败：文件不是有效的 JSON。", "error");
+      return;
+    }
+
+    const response = (await chrome.runtime.sendMessage({
+      type: "plm:replace-state",
+      state: parsedState as ExtensionState,
+    } as RuntimeRequest)) as RuntimeResponse;
+
+    if (isErrorResponse(response)) {
+      setStatus(`导入失败：${response.error}`, "error");
+      return;
+    }
+
+    await loadState();
+    setStatus(`已导入 ${file.name}，当前配置已整份替换。`, "success");
+  } finally {
+    if (importConfigInput) {
+      importConfigInput.value = "";
+    }
+  }
+}
+
+async function getState(): Promise<ExtensionState> {
+  const response = (await chrome.runtime.sendMessage({
+    type: "plm:get-state",
+  } as RuntimeRequest)) as RuntimeResponse;
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error);
+  }
+
+  return response as ExtensionState;
+}
+
+function setStatus(message: string, tone: "success" | "error"): void {
+  if (!configStatus) {
+    return;
+  }
+
+  configStatus.hidden = false;
+  configStatus.textContent = message;
+  configStatus.dataset.tone = tone;
+}
+
+function isErrorResponse(response: RuntimeResponse): response is { ok: false; error: string } {
+  return typeof response === "object" && response !== null && "ok" in response && response.ok === false;
 }

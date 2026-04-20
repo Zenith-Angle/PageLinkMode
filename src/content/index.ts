@@ -12,6 +12,14 @@ let currentContext: ResolvedContext | null = null;
 
 void initializeContentScript();
 
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if ((message as RuntimeRequest).type !== "plm:ping-content") {
+    return;
+  }
+
+  sendResponse({ ok: true });
+});
+
 async function initializeContentScript(): Promise<void> {
   currentContext = (await chrome.runtime.sendMessage({
     type: "plm:get-context",
