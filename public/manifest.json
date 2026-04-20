@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PageLinkMode",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "description": "接管网页内链接跳转，支持全局、站点和单页规则。",
   "permissions": ["storage", "tabs", "scripting", "activeTab"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
