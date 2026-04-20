@@ -86,6 +86,7 @@ PageLinkMode 按以下优先级计算最终行为：
 当前版本已覆盖：
 
 - 普通 `<a href="...">` 链接点击
+- 分页与列表浏览控制链接
 - `target="_blank"` 链接
 - `window.open(...)`
 - 常见 HTML 表单提交
@@ -98,6 +99,10 @@ PageLinkMode 按以下优先级计算最终行为：
 - `mailto:` 链接
 - `javascript:` 链接
 - 同页锚点跳转
+
+PageLinkMode 优先保留页面脚本已经接管的 `click` / `submit` 事件。页面在到达 `window` 之前完成 `preventDefault()` 或停止传播时，扩展沿用页面自己的交互结果。
+
+分页链接按当前页打开处理，属于集合浏览控制语义。
 
 ## 工作方式
 

@@ -20,6 +20,12 @@ const AUTH_KEYWORDS = [
 
 const SHELL_HINTS = /(?:home|homepage|logo|dashboard|index|main|首页|主页|主站)/i;
 const POPUP_HINTS = ["popup", "width", "height", "toolbar", "menubar", "resizable"];
+const PAGINATION_CONTAINER_SELECTOR =
+  ".nsk-pager, .pager, [aria-label='pagination'], [aria-label*='page' i], [aria-label*='分页']";
+const PAGINATION_TEXT_PATTERN =
+  /^(?:\d+|上一页|下一页|上一頁|下一頁|prev|previous|next|first|last)$/i;
+const PAGINATION_PATH_PATTERN = /\/page-\d+\/?$/i;
+const PAGINATION_QUERY_KEYS = ["page", "p", "pn", "paged"] as const;
 
 export interface NavigationDecision {
   disposition: NavigationDisposition;
@@ -50,6 +56,10 @@ export function classifyAnchorNavigation(
 
   if (isLikelyShellNavigation(anchor, currentUrl, href)) {
     return { disposition: "same-tab", reason: "shell-navigation" };
+  }
+
+  if (isLikelyPaginationNavigation(anchor, currentUrl, href)) {
+    return { disposition: "same-tab", reason: "pagination-navigation" };
   }
 
   return { disposition: "new-tab", reason: "same-origin-content-link" };
@@ -170,6 +180,26 @@ export function isLikelyShellNavigation(
   return /^\/(?:home|homepage|dashboard|index)?\/?$/i.test(parsed.pathname);
 }
 
+export function isLikelyPaginationNavigation(
+  anchor: HTMLAnchorElement,
+  currentUrl: string,
+  targetUrl: string,
+): boolean {
+  if (!isSameOriginNavigation(currentUrl, targetUrl)) {
+    return false;
+  }
+
+  if (isPaginationContainerLink(anchor)) {
+    return true;
+  }
+
+  if (hasPaginationClassSignal(anchor) || hasPaginationRelSignal(anchor)) {
+    return true;
+  }
+
+  return hasPaginationTextSignal(anchor) && isPaginationUrl(currentUrl, targetUrl);
+}
+
 export function isPopupLikeWindowOpen(features: string | undefined): boolean {
   if (!features) {
     return false;
@@ -196,6 +226,46 @@ function getElementHints(anchor: HTMLAnchorElement): string {
     )
     .join(" ")
     .trim();
+}
+
+function isPaginationContainerLink(anchor: HTMLAnchorElement): boolean {
+  return anchor.closest(PAGINATION_CONTAINER_SELECTOR) !== null;
+}
+
+function hasPaginationClassSignal(anchor: HTMLAnchorElement): boolean {
+  return ["pager-pos", "pager-prev", "pager-next"].some((className) => anchor.classList.contains(className));
+}
+
+function hasPaginationRelSignal(anchor: HTMLAnchorElement): boolean {
+  const rel = anchor.getAttribute("rel")?.trim().toLowerCase();
+  return rel === "next" || rel === "prev";
+}
+
+function hasPaginationTextSignal(anchor: HTMLAnchorElement): boolean {
+  const text = anchor.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  return PAGINATION_TEXT_PATTERN.test(text);
+}
+
+function isPaginationUrl(currentUrl: string, targetUrl: string): boolean {
+  const current = parseUrl(currentUrl);
+  const target = parseUrl(targetUrl);
+  if (current === null || target === null) {
+    return false;
+  }
+
+  if (PAGINATION_PATH_PATTERN.test(target.pathname)) {
+    return true;
+  }
+
+  return PAGINATION_QUERY_KEYS.some((key) => {
+    const currentValue = current.searchParams.get(key);
+    const targetValue = target.searchParams.get(key);
+    return currentValue !== targetValue && isPositiveInteger(targetValue);
+  });
+}
+
+function isPositiveInteger(value: string | null): boolean {
+  return value !== null && /^\d+$/.test(value);
 }
 
 function isAlreadyCurrentTarget(form: HTMLFormElement): boolean {

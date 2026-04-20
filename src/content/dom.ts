@@ -15,6 +15,10 @@ export function hasPointerModifier(event: MouseEvent): boolean {
   return event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
 }
 
+export function isPageHandledNavigationEvent(event: Event): boolean {
+  return event.defaultPrevented || !event.cancelable;
+}
+
 function toElement(target: EventTarget | null): Element | null {
   if (target instanceof Element) {
     return target;

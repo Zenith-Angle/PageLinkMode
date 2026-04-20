@@ -5,7 +5,12 @@ import {
   classifyFormNavigation,
 } from "../lib/navigation";
 import { isHashOnlyNavigation, isSkippableHref, isSupportedPageUrl } from "../lib/url";
-import { getClosestAnchor, getSubmitForm, hasPointerModifier } from "./dom";
+import {
+  getClosestAnchor,
+  getSubmitForm,
+  hasPointerModifier,
+  isPageHandledNavigationEvent,
+} from "./dom";
 import { submitFormInCurrentTab, submitFormInNewTab } from "./forms";
 
 let currentContext: ResolvedContext | null = null;
@@ -36,8 +41,8 @@ async function initializeContentScript(): Promise<void> {
 
   injectPageBridge(currentContext.effectiveMode);
   window.addEventListener("message", onBridgeMessage);
-  document.addEventListener("click", onDocumentClick, true);
-  document.addEventListener("submit", onDocumentSubmit, true);
+  window.addEventListener("click", onWindowClick);
+  window.addEventListener("submit", onWindowSubmit);
 }
 
 function injectPageBridge(mode: NavigationMode): void {
@@ -66,8 +71,12 @@ function onBridgeMessage(event: MessageEvent<BridgeWindowOpenMessage>): void {
   } as RuntimeRequest);
 }
 
-function onDocumentClick(event: MouseEvent): void {
-  if (currentContext === null || hasPointerModifier(event)) {
+function onWindowClick(event: MouseEvent): void {
+  if (
+    currentContext === null ||
+    hasPointerModifier(event) ||
+    isPageHandledNavigationEvent(event)
+  ) {
     return;
   }
 
@@ -97,7 +106,6 @@ function onDocumentClick(event: MouseEvent): void {
   }
 
   event.preventDefault();
-  event.stopImmediatePropagation();
   void chrome.runtime.sendMessage({
     type: "plm:open-url",
     url: href,
@@ -105,8 +113,8 @@ function onDocumentClick(event: MouseEvent): void {
   } as RuntimeRequest);
 }
 
-function onDocumentSubmit(event: SubmitEvent): void {
-  if (currentContext === null) {
+function onWindowSubmit(event: SubmitEvent): void {
+  if (currentContext === null || isPageHandledNavigationEvent(event)) {
     return;
   }
 
@@ -137,7 +145,6 @@ function onDocumentSubmit(event: SubmitEvent): void {
   }
 
   event.preventDefault();
-  event.stopImmediatePropagation();
 
   if (decision.disposition === "same-tab") {
     submitFormInCurrentTab(form);
