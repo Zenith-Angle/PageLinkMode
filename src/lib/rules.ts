@@ -6,13 +6,27 @@ export function resolveContext(rawUrl: string, state: ExtensionState): ResolvedC
   const hostname = getHostname(rawUrl);
   const pageMode = toRuleMode(state.pageRules[pageKey]);
   const siteMode = toRuleMode(state.siteRules[hostname]);
+  const siteEnabled = !state.disabledSites.includes(hostname);
+
+  if (!siteEnabled) {
+    return buildContext(
+      rawUrl,
+      hostname,
+      pageKey,
+      state.globalMode,
+      siteMode,
+      pageMode,
+      false,
+      "disabled",
+    );
+  }
 
   if (pageMode !== "inherit") {
-    return buildContext(rawUrl, hostname, pageKey, state.globalMode, siteMode, pageMode, "page");
+    return buildContext(rawUrl, hostname, pageKey, state.globalMode, siteMode, pageMode, true, "page");
   }
 
   if (siteMode !== "inherit") {
-    return buildContext(rawUrl, hostname, pageKey, state.globalMode, siteMode, pageMode, "site");
+    return buildContext(rawUrl, hostname, pageKey, state.globalMode, siteMode, pageMode, true, "site");
   }
 
   return buildContext(
@@ -22,6 +36,7 @@ export function resolveContext(rawUrl: string, state: ExtensionState): ResolvedC
     state.globalMode,
     siteMode,
     pageMode,
+    true,
     "global",
   );
 }
@@ -33,6 +48,7 @@ function buildContext(
   globalMode: ResolvedContext["globalMode"],
   siteMode: RuleMode,
   pageMode: RuleMode,
+  siteEnabled: boolean,
   effectiveSource: ResolvedContext["effectiveSource"],
 ): ResolvedContext {
   const effectiveMode =
@@ -46,6 +62,7 @@ function buildContext(
     url,
     hostname,
     pageKey,
+    siteEnabled,
     globalMode,
     siteMode,
     pageMode,
@@ -67,6 +84,7 @@ export function buildUnsupportedPopupContext(rawUrl: string): PopupContext {
     url: rawUrl,
     hostname: "",
     pageKey: rawUrl,
+    siteEnabled: true,
     globalMode: "same-tab",
     siteMode: "inherit",
     pageMode: "inherit",

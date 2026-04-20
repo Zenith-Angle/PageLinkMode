@@ -16,6 +16,7 @@ export type RuntimeRequest =
   | { type: "plm:replace-state"; state: ExtensionState }
   | { type: "plm:open-url"; url: string; mode: NavigationMode }
   | { type: "plm:set-global-mode"; mode: NavigationMode }
+  | { type: "plm:set-site-enabled"; hostname: string; enabled: boolean }
   | { type: "plm:set-site-rule"; hostname: string; mode: RuleMode }
   | { type: "plm:set-page-rule"; url: string; mode: RuleMode }
   | { type: "plm:remove-site-rule"; hostname: string }

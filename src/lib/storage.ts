@@ -2,9 +2,10 @@ import type { ExtensionState, NavigationMode, RuleMode } from "./types";
 import { normalizePageUrl } from "./url";
 
 const DEFAULT_STATE: ExtensionState = {
-  globalMode: "same-tab",
+  globalMode: "new-tab",
   siteRules: {},
   pageRules: {},
+  disabledSites: [],
 };
 const AUTHORIZED_SITES_KEY = "authorizedSites";
 
@@ -19,10 +20,12 @@ export async function readState(): Promise<ExtensionState> {
     "globalMode",
     "siteRules",
     "pageRules",
+    "disabledSites",
   ]);
   const globalMode = stored.globalMode;
   const siteRules = stored.siteRules;
   const pageRules = stored.pageRules;
+  const disabledSites = stored.disabledSites;
   return {
     globalMode:
       globalMode === "same-tab" || globalMode === "new-tab"
@@ -30,6 +33,7 @@ export async function readState(): Promise<ExtensionState> {
         : DEFAULT_STATE.globalMode,
     siteRules: isRuleMap(siteRules) ? siteRules : {},
     pageRules: isRuleMap(pageRules) ? pageRules : {},
+    disabledSites: sanitizeDisabledSites(disabledSites),
   };
 }
 
@@ -75,6 +79,28 @@ export async function writeGlobalMode(mode: NavigationMode): Promise<ExtensionSt
   return nextState;
 }
 
+export async function writeSiteEnabled(
+  hostname: string,
+  enabled: boolean,
+): Promise<ExtensionState> {
+  const state = await readState();
+  const nextDisabledSites = new Set(state.disabledSites);
+  const normalizedHostname = normalizeHostname(hostname);
+
+  if (enabled) {
+    nextDisabledSites.delete(normalizedHostname);
+  } else {
+    nextDisabledSites.add(normalizedHostname);
+  }
+
+  const nextState = {
+    ...state,
+    disabledSites: [...nextDisabledSites].sort(),
+  };
+  await chrome.storage.sync.set(nextState);
+  return nextState;
+}
+
 function isRuleMap(value: unknown): value is Record<string, NavigationMode> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -104,6 +130,8 @@ function parseImportedState(value: unknown): ExtensionState {
     globalMode: parseNavigationMode(record.globalMode, "globalMode"),
     siteRules: parseRuleMap(record.siteRules, "siteRules"),
     pageRules: parseRuleMap(record.pageRules, "pageRules"),
+    disabledSites:
+      "disabledSites" in record ? parseDisabledSites(record.disabledSites) : DEFAULT_STATE.disabledSites,
   };
 }
 
@@ -127,6 +155,18 @@ function parseRuleMap(
     accumulator[key] = parseNavigationMode(entry, `${fieldName}.${key}`);
     return accumulator;
   }, {});
+}
+
+function parseDisabledSites(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error("disabledSites 必须是字符串数组。");
+  }
+
+  if (!value.every((entry) => typeof entry === "string")) {
+    throw new Error("disabledSites 只能包含字符串。");
+  }
+
+  return sanitizeDisabledSites(value);
 }
 
 export async function writeSiteRule(
@@ -174,6 +214,18 @@ async function writeAuthorizedSites(hostnames: string[]): Promise<void> {
 }
 
 function sanitizeAuthorizedSites(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(
+    value
+      .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      .map((entry) => normalizeHostname(entry)),
+  )].sort();
+}
+
+function sanitizeDisabledSites(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }

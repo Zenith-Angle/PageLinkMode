@@ -123,6 +123,36 @@ body {
   padding: 18px;
 }
 
+.status-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.status-toggle-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.status-toggle-title {
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.status-toggle-text {
+  margin: 0;
+  max-width: 220px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .site-heading {
   display: flex;
   align-items: center;
@@ -158,6 +188,15 @@ body {
 .status-chip[data-state="new"] {
   background: rgba(34, 197, 94, 0.12);
   color: #15803d;
+}
+
+.status-chip[data-state="disabled"] {
+  background: rgba(71, 85, 105, 0.14);
+  color: #475569;
+}
+
+.status-card[data-site-enabled="false"] .effective-value {
+  color: #475569;
 }
 
 .effective-block {
@@ -251,6 +290,10 @@ body {
 .rule-card {
   gap: 16px;
   padding: 18px;
+}
+
+.rule-card.is-muted {
+  opacity: 0.82;
 }
 
 .rule-card-head {

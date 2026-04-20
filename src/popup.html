@@ -33,6 +33,25 @@
       <p class="save-note" id="save-note" hidden></p>
 
       <section class="card status-card" id="status-card">
+        <div class="status-toggle-row" id="site-enabled-row">
+          <div class="status-toggle-copy">
+            <p class="section-kicker">站点生效</p>
+            <strong class="status-toggle-title">当前站点生效</strong>
+            <p class="status-toggle-text" id="site-enabled-text">开启时由扩展接管当前站点的网页内跳转。</p>
+          </div>
+          <button
+            id="site-enabled-toggle"
+            class="switch switch-compact"
+            type="button"
+            aria-pressed="true"
+            aria-label="控制当前站点是否由扩展接管"
+          >
+            <span class="switch-track">
+              <span class="switch-thumb"></span>
+            </span>
+          </button>
+        </div>
+
         <div class="site-heading">
           <span class="site-name" id="host-value">-</span>
           <span class="status-chip" id="status-chip">未加载</span>

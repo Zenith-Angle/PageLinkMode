@@ -11,6 +11,7 @@ import {
   readState,
   writeGlobalMode,
   writePageRule,
+  writeSiteEnabled,
   writeSiteRule,
 } from "../lib/storage";
 import { extractHostnameFromPermissionPattern, isSupportedPageUrl } from "../lib/url";
@@ -58,6 +59,8 @@ async function handleMessage(
       return { ok: true };
     case "plm:set-global-mode":
       return writeGlobalMode(message.mode);
+    case "plm:set-site-enabled":
+      return writeSiteEnabled(message.hostname, message.enabled);
     case "plm:set-site-rule":
       return writeSiteRule(message.hostname, message.mode);
     case "plm:set-page-rule":

@@ -4,6 +4,7 @@ const SOURCE_COLORS: Record<RuleSource, string> = {
   global: "#64748b",
   site: "#0f766e",
   page: "#ea580c",
+  disabled: "#475569",
 };
 
 export async function updateBadge(payload: SetBadgePayload): Promise<void> {
@@ -13,7 +14,7 @@ export async function updateBadge(payload: SetBadgePayload): Promise<void> {
 
   await chrome.action.setBadgeText({
     tabId: payload.tabId,
-    text: payload.mode === "same-tab" ? "同" : "新",
+    text: payload.source === "disabled" ? "关" : payload.mode === "same-tab" ? "同" : "新",
   });
 
   await chrome.action.setBadgeBackgroundColor({

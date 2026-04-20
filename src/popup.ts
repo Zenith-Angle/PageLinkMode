@@ -10,6 +10,7 @@ import {
 } from "./lib/url";
 
 interface PopupUiState {
+  isSiteEnabled: boolean;
   isSiteOverrideEnabled: boolean;
   isPageOverrideEnabled: boolean;
   siteSelection: NavigationMode;
@@ -19,6 +20,9 @@ interface PopupUiState {
 type PageAccessState = "ready" | "pending" | "unavailable";
 
 const statusCard = document.querySelector<HTMLElement>("#status-card");
+const siteEnabledRow = document.querySelector<HTMLElement>("#site-enabled-row");
+const siteEnabledToggle = document.querySelector<HTMLButtonElement>("#site-enabled-toggle");
+const siteEnabledText = document.querySelector<HTMLElement>("#site-enabled-text");
 const statusText = document.querySelector<HTMLParagraphElement>("#status-text");
 const hostValue = document.querySelector<HTMLElement>("#host-value");
 const pageValue = document.querySelector<HTMLElement>("#page-value");
@@ -84,6 +88,9 @@ function bindEvents(): void {
   openOptionsButton?.addEventListener("click", () => {
     void chrome.runtime.openOptionsPage();
   });
+  siteEnabledToggle?.addEventListener("click", () => {
+    void handleSiteEnabledToggle();
+  });
   siteOverrideToggle?.addEventListener("click", () => {
     void handleSiteOverrideToggle();
   });
@@ -122,6 +129,7 @@ function bindSegmentedGroup(
 
 function derivePopupUiState(context: PopupContext): PopupUiState {
   return {
+    isSiteEnabled: context.siteEnabled,
     isSiteOverrideEnabled: context.siteMode !== "inherit",
     isPageOverrideEnabled: context.pageMode !== "inherit",
     siteSelection:
@@ -135,6 +143,8 @@ function derivePopupUiState(context: PopupContext): PopupUiState {
 
 function renderUnsupported(): void {
   statusCard?.classList.add("is-unsupported");
+  statusCard?.setAttribute("data-site-enabled", "true");
+  siteEnabledRow!.hidden = true;
   hostValue!.textContent = "当前页面不可用";
   effectiveValue!.textContent = "无法接管";
   sourceValue!.textContent = "来源：浏览器受限页面";
@@ -150,42 +160,73 @@ function renderUnsupported(): void {
 
 function renderContext(context: PopupContext, uiState: PopupUiState): void {
   const pageReady = pageAccessState === "ready";
-  const canEditRule = sitePermissionGranted;
+  const canEditRule = sitePermissionGranted && context.siteEnabled;
 
+  siteEnabledRow!.hidden = false;
   siteSection!.hidden = false;
   pageSection!.hidden = false;
   globalSection!.hidden = false;
   statusCard?.classList.remove("is-unsupported");
+  statusCard?.setAttribute("data-site-enabled", String(context.siteEnabled));
 
+  updateSwitchState(siteEnabledToggle, uiState.isSiteEnabled, false);
+  setHelperText(
+    siteEnabledText,
+    context.siteEnabled
+      ? "开启时由扩展接管当前站点的网页内跳转。"
+      : "关闭后回退为浏览器原生导航，重新开启后恢复这里的规则。",
+  );
   hostValue!.textContent = context.hostname;
   pageValue!.textContent = context.pageKey;
-  effectiveValue!.textContent = context.effectiveMode === "same-tab" ? "同标签页" : "新标签页";
+  effectiveValue!.textContent = context.siteEnabled
+    ? context.effectiveMode === "same-tab"
+      ? "同标签页"
+      : "新标签页"
+    : "不干预";
   sourceValue!.textContent = `来源：${renderSourceText(context.effectiveSource)}`;
-  statusChip!.textContent = context.effectiveMode === "same-tab" ? "当前页" : "新标签";
-  statusChip!.dataset.state = context.effectiveMode === "same-tab" ? "same" : "new";
+  statusChip!.textContent = !context.siteEnabled
+    ? "已停用"
+    : context.effectiveMode === "same-tab"
+      ? "当前页"
+      : "新标签";
+  statusChip!.dataset.state = !context.siteEnabled
+    ? "disabled"
+    : context.effectiveMode === "same-tab"
+      ? "same"
+      : "new";
 
   statusText!.textContent = renderAccessDescription(context, pageAccessState, sitePermissionGranted);
   renderPermissionState(pageAccessState, sitePermissionGranted);
 
-  permissionCard!.hidden = sitePermissionGranted && pageReady;
+  permissionCard!.hidden = !context.siteEnabled || (sitePermissionGranted && pageReady);
 
   updateSwitchState(siteOverrideToggle, uiState.isSiteOverrideEnabled, !canEditRule);
   updateSwitchState(pageOverrideToggle, uiState.isPageOverrideEnabled, !canEditRule);
+  siteSection!.classList.toggle("is-muted", !context.siteEnabled);
+  pageSection!.classList.toggle("is-muted", !context.siteEnabled);
 
   siteModeGroup!.hidden = !uiState.isSiteOverrideEnabled;
   pageModeGroup!.hidden = !uiState.isPageOverrideEnabled;
 
   setHelperText(
     siteHelperText,
-    uiState.isSiteOverrideEnabled
-      ? `当前站点固定为${renderModeLabel(uiState.siteSelection)}。`
-      : `关闭时继承全局默认；启用后默认切到${renderModeLabel(uiState.siteSelection)}。`,
+    !context.siteEnabled
+      ? uiState.isSiteOverrideEnabled
+        ? `当前站点已停用，重新开启后恢复为${renderModeLabel(uiState.siteSelection)}。`
+        : "当前站点已停用，重新开启后才会按这里的规则生效。"
+      : uiState.isSiteOverrideEnabled
+        ? `当前站点固定为${renderModeLabel(uiState.siteSelection)}。`
+        : `关闭时继承全局默认；启用后默认切到${renderModeLabel(uiState.siteSelection)}。`,
   );
   setHelperText(
     pageHelperText,
-    uiState.isPageOverrideEnabled
-      ? `当前页面固定为${renderModeLabel(uiState.pageSelection)}。`
-      : `关闭时继承站点或全局规则；启用后默认切到${renderModeLabel(uiState.pageSelection)}。`,
+    !context.siteEnabled
+      ? uiState.isPageOverrideEnabled
+        ? `当前站点已停用，重新开启后恢复为${renderModeLabel(uiState.pageSelection)}。`
+        : "当前站点已停用，重新开启后才会按这里的规则生效。"
+      : uiState.isPageOverrideEnabled
+        ? `当前页面固定为${renderModeLabel(uiState.pageSelection)}。`
+        : `关闭时继承站点或全局规则；启用后默认切到${renderModeLabel(uiState.pageSelection)}。`,
   );
 
   setSegmentedSelection(globalModeGroup, context.globalMode, false);
@@ -194,6 +235,10 @@ function renderContext(context: PopupContext, uiState: PopupUiState): void {
 }
 
 function renderStatusDescription(context: PopupContext): string {
+  if (!context.siteEnabled) {
+    return "当前站点已停用，扩展不会拦截这个网站的链接、表单或脚本打开行为。";
+  }
+
   if (context.pageMode === "inherit" && context.siteMode === "inherit") {
     return "当前页面正在继承全局默认模式。";
   }
@@ -210,6 +255,10 @@ function renderAccessDescription(
   accessState: PageAccessState,
   hasSitePermission: boolean,
 ): string {
+  if (!context.siteEnabled) {
+    return "当前站点已停用。刷新当前页面后，这个网站会回退为浏览器原生导航，重新开启后会恢复原有规则。";
+  }
+
   if (hasSitePermission && accessState === "ready") {
     return renderStatusDescription(context);
   }
@@ -231,6 +280,13 @@ function renderAccessDescription(
 
 function renderPermissionState(accessState: PageAccessState, hasSitePermission: boolean): void {
   if (!permissionTitle || !permissionDescription || !grantAccessButton) {
+    return;
+  }
+
+  if (currentContext && !currentContext.siteEnabled) {
+    permissionTitle.textContent = "当前站点已停用";
+    permissionDescription.textContent = "重新开启后，如需持久规则，再按当前授权状态继续配置。";
+    grantAccessButton.textContent = "授权当前站点";
     return;
   }
 
@@ -264,6 +320,9 @@ function renderPermissionState(accessState: PageAccessState, hasSitePermission: 
 }
 
 function renderSourceText(source: PopupContext["effectiveSource"]): string {
+  if (source === "disabled") {
+    return "站点已停用";
+  }
   if (source === "page") {
     return "页面规则";
   }
@@ -336,6 +395,14 @@ async function requestSitePermission(): Promise<void> {
   await initializePopup();
 }
 
+async function handleSiteEnabledToggle(): Promise<void> {
+  if (!currentContext) {
+    return;
+  }
+
+  await setSiteEnabled(!currentContext.siteEnabled);
+}
+
 async function handleSiteOverrideToggle(): Promise<void> {
   if (!currentContext || !currentUiState || !sitePermissionGranted) {
     return;
@@ -350,6 +417,24 @@ async function handlePageOverrideToggle(): Promise<void> {
   }
 
   await togglePageOverride(!currentUiState.isPageOverrideEnabled);
+}
+
+async function setSiteEnabled(enabled: boolean): Promise<void> {
+  if (!currentContext) {
+    return;
+  }
+
+  await chrome.runtime.sendMessage({
+    type: "plm:set-site-enabled",
+    hostname: currentContext.hostname,
+    enabled,
+  } as RuntimeRequest);
+  await refreshPopup({ reloadTab: false });
+  showSaveNote(
+    enabled
+      ? "当前站点已重新启用，刷新当前页面后恢复生效。"
+      : "当前站点已停用，刷新当前页面后停止生效。",
+  );
 }
 
 async function toggleSiteOverride(enabled: boolean): Promise<void> {

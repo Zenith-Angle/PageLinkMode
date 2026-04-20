@@ -1,4 +1,9 @@
 import type { NavigationDisposition, NavigationMode } from "./types";
+import {
+  isLikelyImageViewerNavigation,
+  isLikelyImageViewerUrl,
+  isLikelyPaginationNavigation,
+} from "./navigation-heuristics";
 import { parseUrl } from "./url";
 
 const AUTH_KEYWORDS = [
@@ -42,12 +47,20 @@ export function classifyAnchorNavigation(
     return { disposition: "same-tab", reason: "effective-mode-same-tab" };
   }
 
+  if (isLikelyImageViewerNavigation(anchor, href)) {
+    return { disposition: "preserve-native", reason: "image-viewer-navigation" };
+  }
+
   if (!isSameOriginNavigation(currentUrl, href)) {
     return { disposition: "new-tab", reason: "cross-origin-content-link" };
   }
 
   if (isLikelyAuthUrl(href)) {
     return { disposition: "same-tab", reason: "same-origin-auth-link" };
+  }
+
+  if (isLikelyPaginationNavigation(anchor, href)) {
+    return { disposition: "preserve-native", reason: "pagination-navigation" };
   }
 
   if (isSiteRootNavigation(href)) {
@@ -115,6 +128,10 @@ export function classifyWindowOpen(
 
   if (isLikelyAuthUrl(url.toString())) {
     return { disposition: "preserve-native", reason: "auth-window-open" };
+  }
+
+  if (isLikelyImageViewerUrl(url.toString())) {
+    return { disposition: "preserve-native", reason: "image-viewer-window-open" };
   }
 
   if (target && target !== "_blank") {

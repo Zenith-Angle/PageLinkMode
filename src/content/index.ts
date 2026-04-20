@@ -39,6 +39,10 @@ async function initializeContentScript(): Promise<void> {
     },
   } as RuntimeRequest);
 
+  if (!currentContext.siteEnabled) {
+    return;
+  }
+
   injectPageBridge(currentContext.effectiveMode);
   window.addEventListener("message", onBridgeMessage);
   window.addEventListener("click", onWindowClick);
