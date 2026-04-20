@@ -11,7 +11,7 @@
 
 ![Repository](https://img.shields.io/badge/repository-PageLinkMode-181717?logo=github)
 ![Language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)
-![Release](https://img.shields.io/badge/release-v0.3.0-0969DA)
+![Release](https://img.shields.io/badge/release-v0.3.1-0969DA)
 ![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4)
 ![License](https://img.shields.io/badge/license-MIT-2ea043)
 
@@ -89,6 +89,7 @@ PageLinkMode 按以下优先级计算最终行为：
 当前版本已覆盖：
 
 - 普通 `<a href="...">` 链接点击
+- 分页与列表浏览控制链接
 - `target="_blank"` 链接
 - `window.open(...)`
 - 常见 HTML 表单提交
@@ -103,6 +104,10 @@ PageLinkMode 按以下优先级计算最终行为：
 - 同页锚点跳转
 - 传统翻页链接（如页码、上一页、下一页、`rel=prev/next`）
 - 图片查看 / 原图预览 / Lightbox 等高置信图片查看入口
+
+PageLinkMode 优先保留页面脚本已经接管的 `click` / `submit` 事件。页面在到达 `window` 之前完成 `preventDefault()` 或停止传播时，扩展沿用页面自己的交互结果。
+
+分页链接按当前页打开处理，属于集合浏览控制语义。
 
 ## 工作方式
 
