@@ -16,16 +16,35 @@ import {
 } from "../lib/storage";
 import { extractHostnameFromPermissionPattern, isSupportedPageUrl } from "../lib/url";
 
+const pendingContentRecovery = new Map<number, Promise<boolean>>();
+let hasBootstrappedRuntime = false;
+
+// 扩展重新启用后，Chrome 不会自动为已经打开的标签页补回 content script。
+// 这里在后台恢复运行时主动做一次“已打开页面补注入”，避免用户必须手动刷新页面。
+void bootstrapRuntime();
+
 chrome.runtime.onInstalled.addListener(() => {
-  void ensureState();
+  void bootstrapRuntime();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void ensureState();
+  void bootstrapRuntime();
 });
 
 chrome.permissions.onRemoved.addListener((permissions) => {
   void handlePermissionsRemoved(permissions);
+});
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  void ensureContentScriptForTab(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete") {
+    return;
+  }
+
+  void ensureContentScriptForTab(tabId, tab.url);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -37,6 +56,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   return true;
 });
+
+async function bootstrapRuntime(): Promise<void> {
+  if (hasBootstrappedRuntime) {
+    return;
+  }
+
+  hasBootstrappedRuntime = true;
+  await ensureState();
+  await recoverOpenTabs();
+}
 
 async function handleMessage(
   message: RuntimeRequest,
@@ -131,6 +160,73 @@ function getErrorMessage(error: unknown): string {
   return "发生了未知错误。";
 }
 
+async function recoverOpenTabs(): Promise<void> {
+  const tabs = await chrome.tabs.query({
+    url: ["http://*/*", "https://*/*"],
+  });
+
+  await Promise.all(
+    tabs
+      .filter((tab) => tab.id !== undefined)
+      .map((tab) => ensureContentScriptForTab(tab.id!, tab.url)),
+  );
+}
+
+async function ensureContentScriptForTab(tabId: number, rawUrl?: string): Promise<boolean> {
+  const queuedTask = pendingContentRecovery.get(tabId);
+  if (queuedTask) {
+    return queuedTask;
+  }
+
+  const recoveryTask = (async () => {
+    const tabUrl = rawUrl ?? (await chrome.tabs.get(tabId)).url;
+    if (!tabUrl || !isSupportedPageUrl(tabUrl)) {
+      return false;
+    }
+
+    if (await hasReachableContentScript(tabId)) {
+      return true;
+    }
+
+    try {
+      // 只在确认当前页尚未接管时补注入，避免反复叠加脚本监听。
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["js/content.js"],
+      });
+      return true;
+    } catch (error) {
+      if (!isIgnorableInjectionError(error)) {
+        console.warn("[PageLinkMode] 无法为标签页恢复 content script", {
+          tabId,
+          url: tabUrl,
+          error: getErrorMessage(error),
+        });
+      }
+      return false;
+    }
+  })();
+
+  pendingContentRecovery.set(tabId, recoveryTask);
+
+  try {
+    return await recoveryTask;
+  } finally {
+    pendingContentRecovery.delete(tabId);
+  }
+}
+
+async function hasReachableContentScript(tabId: number): Promise<boolean> {
+  try {
+    const response = (await chrome.tabs.sendMessage(tabId, {
+      type: "plm:ping-content",
+    } as RuntimeRequest)) as RuntimeResponse | undefined;
+    return typeof response === "object" && response !== null && "ok" in response && response.ok === true;
+  } catch {
+    return false;
+  }
+}
+
 async function handlePermissionsRemoved(permissions: chrome.permissions.Permissions): Promise<void> {
   const removedOrigins = permissions.origins ?? [];
   if (removedOrigins.length === 0) {
@@ -157,5 +253,16 @@ function isWildcardPermissionPattern(pattern: string): boolean {
     pattern === "*://*/*" ||
     pattern.includes("://*/*") ||
     pattern.includes("://*.")
+  );
+}
+
+function isIgnorableInjectionError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("cannot access contents of url") ||
+    message.includes("the extensions gallery cannot be scripted") ||
+    message.includes("receiving end does not exist") ||
+    message.includes("no tab with id") ||
+    message.includes("tab was closed")
   );
 }

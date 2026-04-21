@@ -11,7 +11,7 @@
 
 ![Repository](https://img.shields.io/badge/repository-PageLinkMode-181717?logo=github)
 ![Language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)
-![Release](https://img.shields.io/badge/release-v0.3.1-0969DA)
+![Release](https://img.shields.io/badge/release-v0.3.3-0969DA)
 ![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4)
 ![License](https://img.shields.io/badge/license-MIT-2ea043)
 
