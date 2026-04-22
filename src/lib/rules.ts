@@ -1,3 +1,4 @@
+import { createDefaultGlobalCategoryRules } from "./navigation-categories";
 import type { ExtensionState, PopupContext, ResolvedContext, RuleMode } from "./types";
 import { getHostname, normalizePageUrl } from "./url";
 
@@ -9,43 +10,43 @@ export function resolveContext(rawUrl: string, state: ExtensionState): ResolvedC
   const siteEnabled = !state.disabledSites.includes(hostname);
 
   if (!siteEnabled) {
-    return buildContext(
-      rawUrl,
-      hostname,
-      pageKey,
-      state.globalMode,
-      siteMode,
-      pageMode,
-      false,
-      "disabled",
-    );
+    return buildContext(rawUrl, hostname, pageKey, state, siteMode, pageMode, false, "disabled");
   }
 
   if (pageMode !== "inherit") {
-    return buildContext(rawUrl, hostname, pageKey, state.globalMode, siteMode, pageMode, true, "page");
+    return buildContext(rawUrl, hostname, pageKey, state, siteMode, pageMode, true, "page");
   }
 
   if (siteMode !== "inherit") {
-    return buildContext(rawUrl, hostname, pageKey, state.globalMode, siteMode, pageMode, true, "site");
+    return buildContext(rawUrl, hostname, pageKey, state, siteMode, pageMode, true, "site");
   }
 
-  return buildContext(
-    rawUrl,
-    hostname,
-    pageKey,
-    state.globalMode,
-    siteMode,
-    pageMode,
-    true,
-    "global",
-  );
+  return buildContext(rawUrl, hostname, pageKey, state, siteMode, pageMode, true, "global");
+}
+
+export function buildUnsupportedPopupContext(rawUrl: string): PopupContext {
+  return {
+    url: rawUrl,
+    hostname: "",
+    pageKey: rawUrl,
+    siteEnabled: true,
+    globalMode: "same-tab",
+    pageMode: "inherit",
+    siteMode: "inherit",
+    globalCategoryRules: createDefaultGlobalCategoryRules(),
+    siteCategoryRules: {},
+    effectiveMode: "same-tab",
+    effectiveSource: "global",
+    supported: false,
+    siteAuthorizationRecorded: false,
+  };
 }
 
 function buildContext(
   url: string,
   hostname: string,
   pageKey: string,
-  globalMode: ResolvedContext["globalMode"],
+  state: ExtensionState,
   siteMode: RuleMode,
   pageMode: RuleMode,
   siteEnabled: boolean,
@@ -53,19 +54,21 @@ function buildContext(
 ): ResolvedContext {
   const effectiveMode =
     effectiveSource === "page"
-      ? ensureMode(pageMode, globalMode)
+      ? ensureMode(pageMode, state.globalMode)
       : effectiveSource === "site"
-        ? ensureMode(siteMode, globalMode)
-        : globalMode;
+        ? ensureMode(siteMode, state.globalMode)
+        : state.globalMode;
 
   return {
     url,
     hostname,
     pageKey,
     siteEnabled,
-    globalMode,
-    siteMode,
+    globalMode: state.globalMode,
     pageMode,
+    siteMode,
+    globalCategoryRules: state.globalCategoryRules,
+    siteCategoryRules: state.siteCategoryRules[hostname] ?? {},
     effectiveMode,
     effectiveSource,
   };
@@ -77,20 +80,4 @@ function toRuleMode(value?: ResolvedContext["effectiveMode"]): RuleMode {
 
 function ensureMode(mode: RuleMode, fallback: ResolvedContext["effectiveMode"]) {
   return mode === "inherit" ? fallback : mode;
-}
-
-export function buildUnsupportedPopupContext(rawUrl: string): PopupContext {
-  return {
-    url: rawUrl,
-    hostname: "",
-    pageKey: rawUrl,
-    siteEnabled: true,
-    globalMode: "same-tab",
-    siteMode: "inherit",
-    pageMode: "inherit",
-    effectiveMode: "same-tab",
-    effectiveSource: "global",
-    supported: false,
-    siteAuthorizationRecorded: false,
-  };
 }

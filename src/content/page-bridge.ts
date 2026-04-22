@@ -1,11 +1,15 @@
-import { classifyWindowOpen } from "../lib/navigation";
-import type { NavigationMode } from "../lib/types";
+import {
+  classifyWindowOpen,
+  resolveNavigationDecision,
+} from "../lib/navigation";
+import type {
+  BridgeWindowOpenMessage,
+  PageBridgeConfig,
+} from "../lib/types";
 
 (() => {
-  const currentScript = document.currentScript as HTMLScriptElement | null;
-  const mode = currentScript?.dataset.mode as NavigationMode | undefined;
-
-  if (mode !== "same-tab" && mode !== "new-tab") {
+  const config = readBridgeConfig();
+  if (config === null) {
     return;
   }
 
@@ -32,14 +36,20 @@ import type { NavigationMode } from "../lib/types";
       return originalOpen(url, target, features);
     }
 
-    const decision = classifyWindowOpen(resolvedUrl, target, features, mode);
+    const decision = resolveNavigationDecision(
+      classifyWindowOpen(resolvedUrl, target, features),
+      config,
+    );
     console.debug("[PageLinkMode] window.open", {
       url: resolvedUrl.toString(),
       target,
       features,
+      category: decision.category,
       disposition: decision.disposition,
+      resolvedBy: decision.resolvedBy,
       reason: decision.reason,
     });
+    postWindowOpenDecision(resolvedUrl.toString(), decision);
 
     if (decision.disposition === "preserve-native") {
       return originalOpen(url, target, features);
@@ -50,18 +60,39 @@ import type { NavigationMode } from "../lib/types";
       return window;
     }
 
-    window.postMessage(
-      {
-        source: "pagelinkmode-bridge",
-        type: "window-open",
-        url: resolvedUrl.toString(),
-      },
-      window.location.origin,
-    );
-
     return null;
   };
 })();
+
+function readBridgeConfig(): PageBridgeConfig | null {
+  const currentScript = document.currentScript as HTMLScriptElement | null;
+  const rawConfig = currentScript?.dataset.config;
+  if (!rawConfig) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawConfig) as PageBridgeConfig;
+  } catch {
+    return null;
+  }
+}
+
+function postWindowOpenDecision(
+  url: string,
+  decision: ReturnType<typeof resolveNavigationDecision>,
+): void {
+  const message: BridgeWindowOpenMessage = {
+    source: "pagelinkmode-bridge",
+    type: "window-open",
+    url,
+    category: decision.category,
+    disposition: decision.disposition,
+    resolvedBy: decision.resolvedBy,
+    reason: decision.reason,
+  };
+  window.postMessage(message, window.location.origin);
+}
 
 function resolveTargetUrl(url: string | URL): URL | null {
   try {

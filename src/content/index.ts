@@ -1,8 +1,13 @@
 import type { RuntimeRequest } from "../lib/messages";
-import type { BridgeWindowOpenMessage, NavigationMode, ResolvedContext } from "../lib/types";
+import type {
+  BridgeWindowOpenMessage,
+  NavigationDebugRecordInput,
+  ResolvedContext,
+} from "../lib/types";
 import {
   classifyAnchorNavigation,
   classifyFormNavigation,
+  resolveNavigationDecision,
 } from "../lib/navigation";
 import { isHashOnlyNavigation, isSkippableHref, isSupportedPageUrl } from "../lib/url";
 import {
@@ -54,18 +59,24 @@ async function initializeContentScript(): Promise<void> {
     return;
   }
 
-  injectPageBridge(currentContext.effectiveMode);
+  injectPageBridge(currentContext);
   window.addEventListener("message", onBridgeMessage);
   window.addEventListener("click", onWindowClickCapture, true);
   window.addEventListener("click", onWindowClick);
   window.addEventListener("submit", onWindowSubmit);
 }
 
-function injectPageBridge(mode: NavigationMode): void {
+function injectPageBridge(context: ResolvedContext): void {
   const script = document.createElement("script");
   script.src = chrome.runtime.getURL("js/page-bridge.js");
-  script.dataset.mode = mode;
   script.dataset.source = "pagelinkmode";
+  script.dataset.config = JSON.stringify({
+    siteEnabled: context.siteEnabled,
+    pageMode: context.pageMode,
+    siteMode: context.siteMode,
+    globalCategoryRules: context.globalCategoryRules,
+    siteCategoryRules: context.siteCategoryRules,
+  });
   script.async = false;
   (document.head ?? document.documentElement).appendChild(script);
   script.remove();
@@ -80,6 +91,19 @@ function onBridgeMessage(event: MessageEvent<BridgeWindowOpenMessage>): void {
     return;
   }
 
+  recordDecision({
+    trigger: "window.open",
+    targetUrl: event.data.url,
+    category: event.data.category,
+    disposition: event.data.disposition,
+    resolvedBy: event.data.resolvedBy,
+    reason: event.data.reason,
+  });
+
+  if (event.data.disposition !== "new-tab") {
+    return;
+  }
+
   void chrome.runtime.sendMessage({
     type: "plm:open-url",
     url: event.data.url,
@@ -88,11 +112,7 @@ function onBridgeMessage(event: MessageEvent<BridgeWindowOpenMessage>): void {
 }
 
 function onWindowClickCapture(event: MouseEvent): void {
-  if (
-    currentContext === null ||
-    hasPointerModifier(event) ||
-    isPageHandledNavigationEvent(event)
-  ) {
+  if (isNavigationEventSkippable(event)) {
     return;
   }
 
@@ -107,11 +127,7 @@ function onWindowClickCapture(event: MouseEvent): void {
 }
 
 function onWindowClick(event: MouseEvent): void {
-  if (
-    currentContext === null ||
-    hasPointerModifier(event) ||
-    isPageHandledNavigationEvent(event)
-  ) {
+  if (isNavigationEventSkippable(event)) {
     return;
   }
 
@@ -142,11 +158,21 @@ function onWindowSubmit(event: SubmitEvent): void {
     return;
   }
 
-  const decision = classifyFormNavigation(form, window.location.href, currentContext.effectiveMode);
+  const decision = resolveNavigationDecision(classifyFormNavigation(form), currentContext);
   console.debug("[PageLinkMode] form navigation", {
     actionUrl,
     method: (form.method || "get").toUpperCase(),
+    category: decision.category,
     disposition: decision.disposition,
+    resolvedBy: decision.resolvedBy,
+    reason: decision.reason,
+  });
+  recordDecision({
+    trigger: "form",
+    targetUrl: actionUrl,
+    category: decision.category,
+    disposition: decision.disposition,
+    resolvedBy: decision.resolvedBy,
     reason: decision.reason,
   });
 
@@ -162,6 +188,14 @@ function onWindowSubmit(event: SubmitEvent): void {
   }
 
   submitFormInNewTab(form);
+}
+
+function isNavigationEventSkippable(event: MouseEvent): boolean {
+  return (
+    currentContext === null ||
+    hasPointerModifier(event) ||
+    isPageHandledNavigationEvent(event)
+  );
 }
 
 function resolveNavigableAnchor(event: MouseEvent): HTMLAnchorElement | null {
@@ -188,12 +222,25 @@ function handleAnchorNavigation(anchor: HTMLAnchorElement, event: MouseEvent): v
   }
 
   const href = anchor.href;
-  const decision = classifyAnchorNavigation(anchor, window.location.href, currentContext.effectiveMode);
+  const decision = resolveNavigationDecision(
+    classifyAnchorNavigation(anchor, window.location.href),
+    currentContext,
+  );
   console.debug("[PageLinkMode] anchor navigation", {
     href,
+    category: decision.category,
     disposition: decision.disposition,
+    resolvedBy: decision.resolvedBy,
     reason: decision.reason,
     phase: event.eventPhase,
+  });
+  recordDecision({
+    trigger: "anchor",
+    targetUrl: href,
+    category: decision.category,
+    disposition: decision.disposition,
+    resolvedBy: decision.resolvedBy,
+    reason: decision.reason,
   });
 
   if (decision.disposition === "preserve-native") {
@@ -205,5 +252,21 @@ function handleAnchorNavigation(anchor: HTMLAnchorElement, event: MouseEvent): v
     type: "plm:open-url",
     url: href,
     mode: decision.disposition,
+  } as RuntimeRequest);
+}
+
+function recordDecision(
+  payload: Omit<NavigationDebugRecordInput, "pageUrl">,
+): void {
+  if (currentContext === null) {
+    return;
+  }
+
+  void chrome.runtime.sendMessage({
+    type: "plm:append-debug-record",
+    record: {
+      pageUrl: currentContext.url,
+      ...payload,
+    },
   } as RuntimeRequest);
 }

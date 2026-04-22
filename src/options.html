@@ -3,29 +3,91 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PageLinkMode 规则管理</title>
+    <title>PageLinkMode 规则工作台</title>
   </head>
   <body>
     <main class="options-layout">
-      <section class="hero">
-        <p class="eyebrow">PageLinkMode</p>
-        <h1>规则管理</h1>
-        <p class="subtle">统一查看全局默认模式、站点规则和单页规则。</p>
+      <section class="hero card">
+        <div class="hero-copy">
+          <p class="eyebrow">PageLinkMode v0.4.0</p>
+          <h1>规则工作台</h1>
+          <p class="subtle">
+            把“哪些跳转留在当前标签页，哪些跳到新标签页，哪些保持网页原生”收敛成一套可查看、可覆写、可回放的规则系统。
+          </p>
+        </div>
+        <div class="hero-stats">
+          <article class="stat-pill">
+            <span class="stat-label">分类策略</span>
+            <strong id="category-count">12 类</strong>
+          </article>
+          <article class="stat-pill">
+            <span class="stat-label">站点覆写</span>
+            <strong id="site-count">0 个</strong>
+          </article>
+          <article class="stat-pill">
+            <span class="stat-label">页面规则</span>
+            <strong id="page-count">0 条</strong>
+          </article>
+        </div>
       </section>
 
-      <section class="card">
-        <label class="control">
-          <span>全局默认模式</span>
-          <select id="options-global-mode">
-            <option value="same-tab">同标签页打开</option>
-            <option value="new-tab">新标签页打开</option>
-          </select>
-        </label>
-      </section>
+      <p id="config-status" class="status-message" role="status" aria-live="polite" hidden></p>
 
-      <section class="card">
+      <section class="card workspace-card">
         <div class="section-head">
           <div>
+            <p class="eyebrow">Global Strategy</p>
+            <h2>全局分类策略</h2>
+            <p class="subtle">当页面或站点没有整体强制规则时，默认按这里的分类动作处理。</p>
+          </div>
+        </div>
+        <div id="global-category-rules" class="matrix-list"></div>
+      </section>
+
+      <section class="card workspace-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Site Override</p>
+            <h2>站点分类覆写</h2>
+            <p class="subtle">按站点覆盖全局分类策略，也可保留当前站点的整体强制模式与启停状态。</p>
+          </div>
+        </div>
+        <div id="site-rule-cards" class="site-card-list"></div>
+      </section>
+
+      <section class="card workspace-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Debug Replay</p>
+            <h2>调试记录</h2>
+            <p class="subtle">最近 50 条命中的导航决策，可按站点筛选，帮助确认分类和最终动作是否符合预期。</p>
+          </div>
+          <div class="toolbar-actions">
+            <label class="filter-field" for="debug-filter">
+              <span>筛选站点</span>
+              <select id="debug-filter"></select>
+            </label>
+            <button id="clear-debug-records" type="button" class="secondary-button">清空记录</button>
+          </div>
+        </div>
+        <div id="debug-records" class="debug-list"></div>
+      </section>
+
+      <section class="card workspace-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Advanced</p>
+            <h2>页面级整体规则</h2>
+            <p class="subtle">这里保留现有的页面级整体强制模式，不扩展为页面级分类矩阵。</p>
+          </div>
+        </div>
+        <div id="page-rules" class="rule-list"></div>
+      </section>
+
+      <section class="card workspace-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Backup</p>
             <h2>配置备份</h2>
             <p class="subtle">导出当前完整配置，或从 JSON 文件整份恢复。</p>
           </div>
@@ -35,23 +97,6 @@
           <button id="import-config" type="button" class="secondary-button">导入配置</button>
           <input id="import-config-input" type="file" accept=".json,application/json" hidden />
         </div>
-        <p id="config-status" class="status-message" role="status" aria-live="polite" hidden></p>
-      </section>
-
-      <section class="card">
-        <div class="section-head">
-          <h2>站点规则</h2>
-          <span id="site-count">0 条</span>
-        </div>
-        <div id="site-rules" class="rule-list"></div>
-      </section>
-
-      <section class="card">
-        <div class="section-head">
-          <h2>页面规则</h2>
-          <span id="page-count">0 条</span>
-        </div>
-        <div id="page-rules" class="rule-list"></div>
       </section>
     </main>
     <script type="module" src="/src/options.ts"></script>

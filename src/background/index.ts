@@ -2,6 +2,11 @@ import { updateBadge } from "./badge";
 import type { RuntimeRequest, RuntimeResponse } from "../lib/messages";
 import { resolveContext, buildUnsupportedPopupContext } from "../lib/rules";
 import {
+  appendDebugRecord,
+  clearDebugRecords,
+  readDebugRecords,
+} from "../lib/debug-storage";
+import {
   clearSiteAuthorizationRecords,
   ensureState,
   hasSiteAuthorizationRecord,
@@ -9,9 +14,11 @@ import {
   removeSiteAuthorizationRecords,
   replaceState,
   readState,
+  writeGlobalCategoryRule,
   writeGlobalMode,
   writePageRule,
   writeSiteEnabled,
+  writeSiteCategoryRule,
   writeSiteRule,
 } from "../lib/storage";
 import { extractHostnameFromPermissionPattern, isSupportedPageUrl } from "../lib/url";
@@ -81,6 +88,14 @@ async function handleMessage(
       return { ok: true };
     case "plm:get-state":
       return readState();
+    case "plm:get-debug-records":
+      return readDebugRecords();
+    case "plm:clear-debug-records":
+      await clearDebugRecords();
+      return { ok: true };
+    case "plm:append-debug-record":
+      await appendDebugRecord(message.record);
+      return { ok: true };
     case "plm:replace-state":
       return replaceState(message.state);
     case "plm:open-url":
@@ -88,12 +103,16 @@ async function handleMessage(
       return { ok: true };
     case "plm:set-global-mode":
       return writeGlobalMode(message.mode);
+    case "plm:set-global-category-rule":
+      return writeGlobalCategoryRule(message.category, message.disposition);
     case "plm:set-site-enabled":
       return writeSiteEnabled(message.hostname, message.enabled);
     case "plm:set-site-rule":
       return writeSiteRule(message.hostname, message.mode);
     case "plm:set-page-rule":
       return writePageRule(message.url, message.mode);
+    case "plm:set-site-category-rule":
+      return writeSiteCategoryRule(message.hostname, message.category, message.rule);
     case "plm:remove-site-rule":
       return writeSiteRule(message.hostname, "inherit");
     case "plm:remove-page-rule":

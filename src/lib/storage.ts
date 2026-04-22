@@ -1,8 +1,24 @@
-import type { ExtensionState, NavigationMode, RuleMode } from "./types";
+import {
+  createDefaultGlobalCategoryRules,
+  NAVIGATION_CATEGORY_ORDER,
+} from "./navigation-categories";
+import type {
+  CategoryRuleMap,
+  ExtensionState,
+  NavigationCategory,
+  NavigationDisposition,
+  NavigationMode,
+  RuleMode,
+  SiteCategoryRule,
+  SiteCategoryRuleMap,
+} from "./types";
 import { normalizePageUrl } from "./url";
 
 const DEFAULT_STATE: ExtensionState = {
+  schemaVersion: 2,
   globalMode: "new-tab",
+  globalCategoryRules: createDefaultGlobalCategoryRules(),
+  siteCategoryRules: {},
   siteRules: {},
   pageRules: {},
   disabledSites: [],
@@ -17,24 +33,15 @@ export async function ensureState(): Promise<ExtensionState> {
 
 export async function readState(): Promise<ExtensionState> {
   const stored = await chrome.storage.sync.get([
+    "schemaVersion",
     "globalMode",
+    "globalCategoryRules",
+    "siteCategoryRules",
     "siteRules",
     "pageRules",
     "disabledSites",
   ]);
-  const globalMode = stored.globalMode;
-  const siteRules = stored.siteRules;
-  const pageRules = stored.pageRules;
-  const disabledSites = stored.disabledSites;
-  return {
-    globalMode:
-      globalMode === "same-tab" || globalMode === "new-tab"
-        ? globalMode
-        : DEFAULT_STATE.globalMode,
-    siteRules: isRuleMap(siteRules) ? siteRules : {},
-    pageRules: isRuleMap(pageRules) ? pageRules : {},
-    disabledSites: sanitizeDisabledSites(disabledSites),
-  };
+  return normalizePersistedState(stored);
 }
 
 export async function replaceState(nextStateInput: unknown): Promise<ExtensionState> {
@@ -73,43 +80,94 @@ export async function clearSiteAuthorizationRecords(): Promise<void> {
 }
 
 export async function writeGlobalMode(mode: NavigationMode): Promise<ExtensionState> {
-  const state = await readState();
-  const nextState = { ...state, globalMode: mode };
-  await chrome.storage.sync.set(nextState);
-  return nextState;
+  return updateState((state) => ({ ...state, globalMode: mode }));
+}
+
+export async function writeGlobalCategoryRule(
+  category: NavigationCategory,
+  disposition: NavigationDisposition,
+): Promise<ExtensionState> {
+  return updateState((state) => ({
+    ...state,
+    globalCategoryRules: {
+      ...state.globalCategoryRules,
+      [category]: disposition,
+    },
+  }));
 }
 
 export async function writeSiteEnabled(
   hostname: string,
   enabled: boolean,
 ): Promise<ExtensionState> {
-  const state = await readState();
-  const nextDisabledSites = new Set(state.disabledSites);
   const normalizedHostname = normalizeHostname(hostname);
+  return updateState((state) => {
+    const nextDisabledSites = new Set(state.disabledSites);
+    if (enabled) {
+      nextDisabledSites.delete(normalizedHostname);
+    } else {
+      nextDisabledSites.add(normalizedHostname);
+    }
 
-  if (enabled) {
-    nextDisabledSites.delete(normalizedHostname);
-  } else {
-    nextDisabledSites.add(normalizedHostname);
-  }
+    return {
+      ...state,
+      disabledSites: [...nextDisabledSites].sort(),
+    };
+  });
+}
 
-  const nextState = {
+export async function writeSiteRule(
+  hostname: string,
+  mode: RuleMode,
+): Promise<ExtensionState> {
+  const normalizedHostname = normalizeHostname(hostname);
+  return updateState((state) => ({
     ...state,
-    disabledSites: [...nextDisabledSites].sort(),
-  };
-  await chrome.storage.sync.set(nextState);
-  return nextState;
+    siteRules: writeRuleMapEntry(state.siteRules, normalizedHostname, mode),
+  }));
 }
 
-function isRuleMap(value: unknown): value is Record<string, NavigationMode> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
-  return Object.values(value).every((entry) => entry === "same-tab" || entry === "new-tab");
+export async function writePageRule(
+  rawUrl: string,
+  mode: RuleMode,
+): Promise<ExtensionState> {
+  const pageKey = normalizePageUrl(rawUrl);
+  return updateState((state) => ({
+    ...state,
+    pageRules: writeRuleMapEntry(state.pageRules, pageKey, mode),
+  }));
 }
 
-function parseImportedState(value: unknown): ExtensionState {
+export async function writeSiteCategoryRule(
+  hostname: string,
+  category: NavigationCategory,
+  rule: SiteCategoryRule,
+): Promise<ExtensionState> {
+  const normalizedHostname = normalizeHostname(hostname);
+  return updateState((state) => {
+    const nextSiteCategoryRules = { ...state.siteCategoryRules };
+    const currentRuleMap = sanitizeSiteCategoryRuleMap(nextSiteCategoryRules[normalizedHostname]);
+
+    if (rule === "inherit") {
+      delete currentRuleMap[category];
+    } else {
+      currentRuleMap[category] = rule;
+    }
+
+    if (Object.keys(currentRuleMap).length === 0) {
+      delete nextSiteCategoryRules[normalizedHostname];
+    } else {
+      nextSiteCategoryRules[normalizedHostname] = currentRuleMap;
+    }
+
+    return {
+      ...state,
+      siteCategoryRules: nextSiteCategoryRules,
+    };
+  });
+}
+
+export function parseImportedState(value: unknown): ExtensionState {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("导入配置必须是一个 JSON 对象。");
   }
@@ -127,7 +185,16 @@ function parseImportedState(value: unknown): ExtensionState {
   }
 
   return {
+    schemaVersion: 2,
     globalMode: parseNavigationMode(record.globalMode, "globalMode"),
+    globalCategoryRules:
+      "globalCategoryRules" in record
+        ? parseGlobalCategoryRules(record.globalCategoryRules)
+        : createDefaultGlobalCategoryRules(),
+    siteCategoryRules:
+      "siteCategoryRules" in record
+        ? parseSiteCategoryRules(record.siteCategoryRules)
+        : {},
     siteRules: parseRuleMap(record.siteRules, "siteRules"),
     pageRules: parseRuleMap(record.pageRules, "pageRules"),
     disabledSites:
@@ -135,12 +202,125 @@ function parseImportedState(value: unknown): ExtensionState {
   };
 }
 
-function parseNavigationMode(value: unknown, fieldName: string): NavigationMode {
-  if (value === "same-tab" || value === "new-tab") {
-    return value;
+async function updateState(
+  updater: (state: ExtensionState) => ExtensionState,
+): Promise<ExtensionState> {
+  const state = await readState();
+  const nextState = updater(state);
+  await chrome.storage.sync.set(nextState);
+  return nextState;
+}
+
+function normalizePersistedState(value: Record<string, unknown>): ExtensionState {
+  return {
+    schemaVersion: 2,
+    globalMode: parseNavigationMode(value.globalMode, "globalMode", DEFAULT_STATE.globalMode),
+    globalCategoryRules: sanitizeGlobalCategoryRules(value.globalCategoryRules),
+    siteCategoryRules: sanitizeSiteCategoryRules(value.siteCategoryRules),
+    siteRules: isRuleMap(value.siteRules) ? value.siteRules : {},
+    pageRules: isRuleMap(value.pageRules) ? value.pageRules : {},
+    disabledSites: sanitizeDisabledSites(value.disabledSites),
+  };
+}
+
+function isRuleMap(value: unknown): value is Record<string, NavigationMode> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
   }
 
-  throw new Error(`${fieldName} 只能是 same-tab 或 new-tab。`);
+  return Object.values(value).every((entry) => entry === "same-tab" || entry === "new-tab");
+}
+
+function sanitizeGlobalCategoryRules(value: unknown): CategoryRuleMap {
+  const defaults = createDefaultGlobalCategoryRules();
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return defaults;
+  }
+
+  const record = value as Record<string, unknown>;
+  return NAVIGATION_CATEGORY_ORDER.reduce<CategoryRuleMap>((accumulator, category) => {
+    accumulator[category] = parseNavigationDisposition(
+      record[category],
+      `globalCategoryRules.${category}`,
+      defaults[category],
+    );
+    return accumulator;
+  }, { ...defaults });
+}
+
+function sanitizeSiteCategoryRules(value: unknown): Record<string, SiteCategoryRuleMap> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.entries(value).reduce<Record<string, SiteCategoryRuleMap>>((accumulator, [key, entry]) => {
+    const normalizedKey = normalizeHostname(key);
+    const ruleMap = sanitizeSiteCategoryRuleMap(entry);
+    if (normalizedKey && Object.keys(ruleMap).length > 0) {
+      accumulator[normalizedKey] = ruleMap;
+    }
+    return accumulator;
+  }, {});
+}
+
+function sanitizeSiteCategoryRuleMap(value: unknown): SiteCategoryRuleMap {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  const record = value as Record<string, unknown>;
+  return NAVIGATION_CATEGORY_ORDER.reduce<SiteCategoryRuleMap>((accumulator, category) => {
+    const parsed = parseSiteCategoryRule(record[category], `siteCategoryRules.${category}`);
+    if (parsed !== "inherit") {
+      accumulator[category] = parsed;
+    }
+    return accumulator;
+  }, {});
+}
+
+function parseGlobalCategoryRules(value: unknown): CategoryRuleMap {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("globalCategoryRules 必须是对象。");
+  }
+
+  const record = value as Record<string, unknown>;
+  return NAVIGATION_CATEGORY_ORDER.reduce<CategoryRuleMap>((accumulator, category) => {
+    accumulator[category] = parseNavigationDisposition(
+      record[category],
+      `globalCategoryRules.${category}`,
+    );
+    return accumulator;
+  }, createDefaultGlobalCategoryRules());
+}
+
+function parseSiteCategoryRules(value: unknown): Record<string, SiteCategoryRuleMap> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("siteCategoryRules 必须是对象。");
+  }
+
+  return Object.entries(value).reduce<Record<string, SiteCategoryRuleMap>>((accumulator, [key, entry]) => {
+    const normalizedKey = normalizeHostname(key);
+    const parsedRuleMap = parseSiteCategoryRuleMap(entry, `siteCategoryRules.${key}`);
+    if (normalizedKey && Object.keys(parsedRuleMap).length > 0) {
+      accumulator[normalizedKey] = parsedRuleMap;
+    }
+    return accumulator;
+  }, {});
+}
+
+function parseSiteCategoryRuleMap(value: unknown, fieldName: string): SiteCategoryRuleMap {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${fieldName} 必须是对象。`);
+  }
+
+  const record = value as Record<string, unknown>;
+  return NAVIGATION_CATEGORY_ORDER.reduce<SiteCategoryRuleMap>((accumulator, category) => {
+    const parsed = parseSiteCategoryRule(record[category], `${fieldName}.${category}`);
+    if (parsed !== "inherit") {
+      accumulator[category] = parsed;
+    }
+    return accumulator;
+  }, {});
 }
 
 function parseRuleMap(
@@ -169,37 +349,68 @@ function parseDisabledSites(value: unknown): string[] {
   return sanitizeDisabledSites(value);
 }
 
-export async function writeSiteRule(
-  hostname: string,
-  mode: RuleMode,
-): Promise<ExtensionState> {
-  const state = await readState();
-  const nextRules = { ...state.siteRules };
-  if (mode === "inherit") {
-    delete nextRules[hostname];
-  } else {
-    nextRules[hostname] = mode;
+function parseNavigationMode(
+  value: unknown,
+  fieldName: string,
+  fallback?: NavigationMode,
+): NavigationMode {
+  if (value === "same-tab" || value === "new-tab") {
+    return value;
   }
-  const nextState = { ...state, siteRules: nextRules };
-  await chrome.storage.sync.set(nextState);
-  return nextState;
+
+  if (fallback) {
+    return fallback;
+  }
+
+  throw new Error(`${fieldName} 只能是 same-tab 或 new-tab。`);
 }
 
-export async function writePageRule(
-  rawUrl: string,
-  mode: RuleMode,
-): Promise<ExtensionState> {
-  const state = await readState();
-  const pageKey = normalizePageUrl(rawUrl);
-  const nextRules = { ...state.pageRules };
-  if (mode === "inherit") {
-    delete nextRules[pageKey];
-  } else {
-    nextRules[pageKey] = mode;
+function parseNavigationDisposition(
+  value: unknown,
+  fieldName: string,
+  fallback?: NavigationDisposition,
+): NavigationDisposition {
+  if (value === "same-tab" || value === "new-tab" || value === "preserve-native") {
+    return value;
   }
-  const nextState = { ...state, pageRules: nextRules };
-  await chrome.storage.sync.set(nextState);
-  return nextState;
+
+  if (fallback) {
+    return fallback;
+  }
+
+  throw new Error(`${fieldName} 只能是 same-tab、new-tab 或 preserve-native。`);
+}
+
+function parseSiteCategoryRule(
+  value: unknown,
+  fieldName: string,
+): SiteCategoryRule {
+  if (
+    value === undefined ||
+    value === null ||
+    value === "inherit" ||
+    value === "same-tab" ||
+    value === "new-tab" ||
+    value === "preserve-native"
+  ) {
+    return value ?? "inherit";
+  }
+
+  throw new Error(`${fieldName} 只能是 inherit、same-tab、new-tab 或 preserve-native。`);
+}
+
+function writeRuleMapEntry<T extends string>(
+  ruleMap: Record<string, T>,
+  key: string,
+  mode: T | "inherit",
+): Record<string, T> {
+  const nextRules = { ...ruleMap };
+  if (mode === "inherit") {
+    delete nextRules[key];
+  } else {
+    nextRules[key] = mode;
+  }
+  return nextRules;
 }
 
 async function readAuthorizedSites(): Promise<string[]> {

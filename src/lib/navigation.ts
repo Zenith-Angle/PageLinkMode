@@ -1,4 +1,9 @@
-import type { NavigationDisposition, NavigationMode } from "./types";
+import type {
+  NavigationCategory,
+  NavigationDecision,
+  NavigationDecisionSource,
+  NavigationResolutionContext,
+} from "./types";
 import {
   isLikelyImageViewerNavigation,
   isLikelyImageViewerUrl,
@@ -26,113 +31,107 @@ const AUTH_KEYWORDS = [
 const SHELL_HINTS = /(?:home|homepage|logo|dashboard|index|main|首页|主页|主站)/i;
 const POPUP_HINTS = ["popup", "width", "height", "toolbar", "menubar", "resizable"];
 
-export interface NavigationDecision {
-  disposition: NavigationDisposition;
+interface NavigationClassification {
+  category: NavigationCategory;
   reason: string;
 }
 
 export function classifyAnchorNavigation(
   anchor: HTMLAnchorElement,
   currentUrl: string,
-  effectiveMode: NavigationMode,
-): NavigationDecision {
+): NavigationClassification {
   const href = anchor.href;
-  if (effectiveMode === "same-tab") {
-    return { disposition: "same-tab", reason: "effective-mode-same-tab" };
-  }
 
   if (isLikelyImageViewerNavigation(anchor, href)) {
-    return { disposition: "preserve-native", reason: "image-viewer-navigation" };
+    return { category: "image-viewer-link", reason: "image-viewer-navigation" };
   }
 
   if (!isSameOriginNavigation(currentUrl, href)) {
-    return { disposition: "new-tab", reason: "cross-origin-content-link" };
+    return { category: "cross-origin-content-link", reason: "cross-origin-content-link" };
   }
 
   if (isLikelyAuthUrl(href)) {
-    return { disposition: "same-tab", reason: "same-origin-auth-link" };
+    return { category: "auth-link", reason: "same-origin-auth-link" };
+  }
+
+  if (isSiteRootNavigation(href) || isLikelyShellNavigation(anchor, currentUrl, href)) {
+    return { category: "site-shell-navigation", reason: "shell-navigation" };
   }
 
   if (isLikelyPaginationNavigation(anchor, href)) {
-    return { disposition: "preserve-native", reason: "pagination-navigation" };
+    return { category: "pagination-navigation", reason: "pagination-navigation" };
   }
 
-  if (isSiteRootNavigation(href)) {
-    return { disposition: "same-tab", reason: "site-root-navigation" };
-  }
-
-  if (isLikelyShellNavigation(anchor, currentUrl, href)) {
-    return { disposition: "same-tab", reason: "shell-navigation" };
-  }
-
-  return { disposition: "new-tab", reason: "same-origin-content-link" };
+  return { category: "same-origin-content-link", reason: "same-origin-content-link" };
 }
 
-export function classifyFormNavigation(
-  form: HTMLFormElement,
-  currentUrl: string,
-  effectiveMode: NavigationMode,
-): NavigationDecision {
-  const actionUrl = form.action || currentUrl;
+export function classifyFormNavigation(form: HTMLFormElement): NavigationClassification {
   const method = (form.method || "get").toUpperCase();
-  const currentTarget = isAlreadyCurrentTarget(form);
-
-  if (effectiveMode === "same-tab") {
-    return currentTarget
-      ? { disposition: "preserve-native", reason: "same-tab-native-form-submit" }
-      : { disposition: "same-tab", reason: "same-tab-force-current-target" };
+  if (method === "GET") {
+    return { category: "get-form-submit", reason: "get-form-submit" };
   }
 
-  if (currentTarget) {
-    if (method !== "GET") {
-      return { disposition: "preserve-native", reason: "non-get-form-preserve-native" };
-    }
-
-    if (isLikelyAuthUrl(actionUrl)) {
-      return { disposition: "preserve-native", reason: "auth-form-preserve-native" };
-    }
-
-    return { disposition: "preserve-native", reason: "get-form-preserve-native" };
-  }
-
-  if (method !== "GET") {
-    return { disposition: "same-tab", reason: "non-get-form-force-current-tab" };
-  }
-
-  if (isLikelyAuthUrl(actionUrl)) {
-    return { disposition: "same-tab", reason: "auth-form-force-current-tab" };
-  }
-
-  return { disposition: "same-tab", reason: "get-form-force-current-tab" };
+  return { category: "non-get-form-submit", reason: "non-get-form-submit" };
 }
 
 export function classifyWindowOpen(
   url: URL,
   target: string | undefined,
   features: string | undefined,
-  effectiveMode: NavigationMode,
-): NavigationDecision {
-  if (effectiveMode === "same-tab") {
-    return { disposition: "same-tab", reason: "effective-mode-same-tab" };
-  }
-
+): NavigationClassification {
   if (isLikelyAuthUrl(url.toString())) {
-    return { disposition: "preserve-native", reason: "auth-window-open" };
+    return { category: "auth-window-open", reason: "auth-window-open" };
   }
 
   if (isLikelyImageViewerUrl(url.toString())) {
-    return { disposition: "preserve-native", reason: "image-viewer-window-open" };
+    return { category: "image-window-open", reason: "image-viewer-window-open" };
   }
 
-  if (target && target !== "_blank") {
-    return { disposition: "preserve-native", reason: "named-or-nonblank-target" };
+  if ((target && target !== "_blank") || isPopupLikeWindowOpen(features)) {
+    return { category: "named-or-popup-window-open", reason: "named-or-popup-window-open" };
   }
 
-  if (isPopupLikeWindowOpen(features)) {
-    return { disposition: "preserve-native", reason: "popup-window-open" };
+  return { category: "window-open", reason: "content-window-open" };
+}
+
+export function resolveNavigationDecision(
+  classification: NavigationClassification,
+  context: NavigationResolutionContext,
+): NavigationDecision {
+  const resolved = resolveNavigationDisposition(classification.category, context);
+  return {
+    category: classification.category,
+    reason: classification.reason,
+    disposition: resolved.disposition,
+    resolvedBy: resolved.resolvedBy,
+  };
+}
+
+export function resolveNavigationDisposition(
+  category: NavigationCategory,
+  context: NavigationResolutionContext,
+): Pick<NavigationDecision, "disposition" | "resolvedBy"> {
+  if (!context.siteEnabled) {
+    return { disposition: "preserve-native", resolvedBy: "disabled" };
   }
 
-  return { disposition: "new-tab", reason: "content-window-open" };
+  if (context.pageMode !== "inherit") {
+    return { disposition: context.pageMode, resolvedBy: "page" };
+  }
+
+  if (context.siteMode !== "inherit") {
+    return { disposition: context.siteMode, resolvedBy: "site" };
+  }
+
+  const siteRule = context.siteCategoryRules[category];
+  if (siteRule && siteRule !== "inherit") {
+    return { disposition: siteRule, resolvedBy: "site-category" };
+  }
+
+  return {
+    disposition: context.globalCategoryRules[category],
+    resolvedBy: "global-category",
+  };
 }
 
 export function isSameOriginNavigation(currentUrl: string, nextUrl: string): boolean {
@@ -213,8 +212,4 @@ function getElementHints(anchor: HTMLAnchorElement): string {
     )
     .join(" ")
     .trim();
-}
-
-function isAlreadyCurrentTarget(form: HTMLFormElement): boolean {
-  return form.target === "" || form.target === "_self";
 }
