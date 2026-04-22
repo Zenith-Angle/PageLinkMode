@@ -9,11 +9,11 @@
 
 [项目主页](https://github.com/Zenith-Angle/PageLinkMode) · [问题反馈](https://github.com/Zenith-Angle/PageLinkMode/issues) · [MIT License](./LICENSE)
 
-![Repository](https://img.shields.io/badge/repository-PageLinkMode-181717?logo=github)
-![Language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)
-![Release](https://img.shields.io/badge/release-v0.4.0-0969DA)
-![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4)
-![License](https://img.shields.io/badge/license-MIT-2ea043)
+[![Repository](https://img.shields.io/badge/repository-PageLinkMode-181717?logo=github)](https://github.com/Zenith-Angle/PageLinkMode)
+[![Language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Release](https://img.shields.io/badge/release-v0.4.0-0969DA)](https://github.com/Zenith-Angle/PageLinkMode/releases)
+[![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4)](https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3)
+[![License](https://img.shields.io/badge/license-MIT-2ea043)](https://github.com/Zenith-Angle/PageLinkMode/blob/main/LICENSE)
 
 </div>
 
