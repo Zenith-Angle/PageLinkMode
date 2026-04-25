@@ -11,7 +11,7 @@
 
 [![Repository](https://img.shields.io/badge/repository-PageLinkMode-181717?logo=github)](https://github.com/Zenith-Angle/PageLinkMode)
 [![Language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Release](https://img.shields.io/badge/release-v0.4.0-0969DA)](https://github.com/Zenith-Angle/PageLinkMode/releases)
+[![Release](https://img.shields.io/badge/release-v0.4.1-0969DA)](https://github.com/Zenith-Angle/PageLinkMode/releases)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4)](https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3)
 [![License](https://img.shields.io/badge/license-MIT-2ea043)](https://github.com/Zenith-Angle/PageLinkMode/blob/main/LICENSE)
 
@@ -74,7 +74,7 @@ PageLinkMode 适合这些场景：
 
 ## 规则模型
 
-PageLinkMode 在 `v0.4.0` 中把“跳转类型”显式建模为分类策略，并按以下优先级计算最终行为：
+PageLinkMode 在 `v0.4.1` 中把“跳转类型”显式建模为分类策略，并按以下优先级计算最终行为：
 
 若当前站点被停用，则扩展会直接回退为浏览器原生导航，并保留此前保存的站点规则与页面规则。
 
@@ -111,6 +111,8 @@ PageLinkMode 在 `v0.4.0` 中把“跳转类型”显式建模为分类策略，
 - 图片查看 / 原图预览 / Lightbox 等高置信图片查看入口
 
 PageLinkMode 优先保留页面脚本已经接管的 `click` / `submit` 事件。页面在到达 `window` 之前完成 `preventDefault()` 或停止传播时，扩展沿用页面自己的交互结果。
+
+当扩展已经明确接管某次链接点击时，会同时阻止浏览器默认跳转和页面后续 `click` 监听中的脚本导航，避免出现“新标签已打开，但当前页也被带走”的双跳转。
 
 分页链接按当前页打开处理，属于集合浏览控制语义。
 
