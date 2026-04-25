@@ -6,6 +6,7 @@ import esbuild from "esbuild";
 const rootDir = process.cwd();
 const tempDir = resolve(rootDir, ".test-dist");
 const testEntries = [
+  "src/content/anchor-events.test.ts",
   "src/lib/navigation.test.ts",
   "src/lib/storage.test.ts",
 ];

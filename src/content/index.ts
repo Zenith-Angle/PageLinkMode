@@ -13,9 +13,13 @@ import { isHashOnlyNavigation, isSkippableHref, isSupportedPageUrl } from "../li
 import {
   getClosestAnchor,
   getSubmitForm,
-  hasPointerModifier,
   isPageHandledNavigationEvent,
 } from "./dom";
+import {
+  shouldSkipAnchorNavigationEvent,
+  shouldTakeOverAnchorNavigation,
+  takeOverAnchorNavigation,
+} from "./anchor-events";
 import { submitFormInCurrentTab, submitFormInNewTab } from "./forms";
 
 type ContentRuntimeScope = typeof globalThis & {
@@ -112,7 +116,7 @@ function onBridgeMessage(event: MessageEvent<BridgeWindowOpenMessage>): void {
 }
 
 function onWindowClickCapture(event: MouseEvent): void {
-  if (isNavigationEventSkippable(event)) {
+  if (shouldSkipAnchorNavigationEvent(event, currentContext !== null)) {
     return;
   }
 
@@ -127,7 +131,7 @@ function onWindowClickCapture(event: MouseEvent): void {
 }
 
 function onWindowClick(event: MouseEvent): void {
-  if (isNavigationEventSkippable(event)) {
+  if (shouldSkipAnchorNavigationEvent(event, currentContext !== null)) {
     return;
   }
 
@@ -190,14 +194,6 @@ function onWindowSubmit(event: SubmitEvent): void {
   submitFormInNewTab(form);
 }
 
-function isNavigationEventSkippable(event: MouseEvent): boolean {
-  return (
-    currentContext === null ||
-    hasPointerModifier(event) ||
-    isPageHandledNavigationEvent(event)
-  );
-}
-
 function resolveNavigableAnchor(event: MouseEvent): HTMLAnchorElement | null {
   const anchor = getClosestAnchor(event.target);
   if (!anchor || anchor.hasAttribute("download")) {
@@ -247,7 +243,13 @@ function handleAnchorNavigation(anchor: HTMLAnchorElement, event: MouseEvent): v
     return;
   }
 
-  event.preventDefault();
+  if (!shouldTakeOverAnchorNavigation(event, decision.disposition)) {
+    return;
+  }
+
+  // 命中扩展接管规则后，不仅要取消浏览器默认跳转，
+  // 还要同步截断页面后续 click 监听中的脚本导航，避免“双跳转”。
+  takeOverAnchorNavigation(event);
   void chrome.runtime.sendMessage({
     type: "plm:open-url",
     url: href,
