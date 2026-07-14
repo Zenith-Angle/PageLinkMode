@@ -4,9 +4,7 @@ import { getHostname } from "./url";
 const DEBUG_RECORDS_KEY = "debugRecords";
 const DEBUG_RECORD_LIMIT = 50;
 
-export async function appendDebugRecord(
-  recordInput: NavigationDebugRecordInput,
-): Promise<NavigationDebugRecord> {
+export async function appendDebugRecord(recordInput: NavigationDebugRecordInput): Promise<NavigationDebugRecord> {
   const nextRecord: NavigationDebugRecord = {
     id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     timestamp: Date.now(),
@@ -14,8 +12,7 @@ export async function appendDebugRecord(
     ...recordInput,
   };
   const records = await readDebugRecords();
-  const nextRecords = [nextRecord, ...records].slice(0, DEBUG_RECORD_LIMIT);
-  await chrome.storage.session.set({ [DEBUG_RECORDS_KEY]: nextRecords });
+  await chrome.storage.session.set({ [DEBUG_RECORDS_KEY]: [nextRecord, ...records].slice(0, DEBUG_RECORD_LIMIT) });
   return nextRecord;
 }
 
@@ -28,21 +25,13 @@ export async function clearDebugRecords(): Promise<void> {
   await chrome.storage.session.set({ [DEBUG_RECORDS_KEY]: [] });
 }
 
-function sanitizeDebugRecords(value: unknown): NavigationDebugRecord[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((entry): entry is NavigationDebugRecord => isDebugRecord(entry))
-    .slice(0, DEBUG_RECORD_LIMIT);
+export function sanitizeDebugRecords(value: unknown): NavigationDebugRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isDebugRecord).slice(0, DEBUG_RECORD_LIMIT);
 }
 
 function isDebugRecord(value: unknown): value is NavigationDebugRecord {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return (
     typeof record.id === "string" &&
@@ -50,10 +39,20 @@ function isDebugRecord(value: unknown): value is NavigationDebugRecord {
     typeof record.hostname === "string" &&
     typeof record.pageUrl === "string" &&
     typeof record.targetUrl === "string" &&
-    typeof record.trigger === "string" &&
+    (record.trigger === "anchor" || record.trigger === "form" || record.trigger === "window.open") &&
     typeof record.category === "string" &&
-    typeof record.disposition === "string" &&
+    isDisposition(record.requestedDisposition) &&
+    isDisposition(record.nativeDisposition) &&
+    isDisposition(record.disposition) &&
+    typeof record.applied === "boolean" &&
+    (record.bypassReason === undefined || typeof record.bypassReason === "string") &&
     typeof record.resolvedBy === "string" &&
+    (record.winningRuleId === undefined || typeof record.winningRuleId === "string") &&
+    Array.isArray(record.evidence) && record.evidence.every((entry) => typeof entry === "string") &&
     typeof record.reason === "string"
   );
+}
+
+function isDisposition(value: unknown): boolean {
+  return value === "same-tab" || value === "new-tab" || value === "preserve-native";
 }

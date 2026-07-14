@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scripted navigation and child frame fixture</title>
+  <style>button, a { margin: 0.4rem; } iframe { display: block; width: 90%; height: 9rem; margin: 1rem 0; } #result-log { border: 1px solid #777; min-height: 2rem; padding: 0.75rem 2rem; }</style>
+</head>
+<body>
+  <h1>Scripted navigation</h1>
+  <p>
+    <a data-testid="inline-onclick-link" href="modern-spa.html?from=onclick" onclick="fixtureRecord('inline:anchor')">Inline onclick anchor</a>
+    <button data-testid="window-open-blank" type="button" onclick="fixtureOpen('modern-spa.html?from=open-blank', '_blank')">window.open blank</button>
+    <button data-testid="window-open-self" type="button" onclick="fixtureOpen('legacy-table.html?from=open-self', '_self')">window.open self</button>
+    <button data-testid="window-open-named" type="button" onclick="fixtureOpen('forms.html?from=open-named', 'fixture-popup')">window.open named</button>
+  </p>
+  <iframe data-testid="about-blank-frame" name="about-blank-frame" src="about:blank" title="about blank child"></iframe>
+  <iframe data-testid="srcdoc-frame" name="srcdoc-frame" title="srcdoc child" srcdoc="<!doctype html><html><body><a data-testid='srcdoc-link' href='modern-spa.html?from=srcdoc'>srcdoc link</a><ol id='result-log' data-testid='result-log'><li data-testid='initial-state'>ready:srcdoc</li></ol></body></html>"></iframe>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready</li></ol>
+  <script>
+    function fixtureRecord(value) {
+      var item = document.createElement("li");
+      item.dataset.testid = "log-entry";
+      item.textContent = value;
+      document.getElementById("result-log").appendChild(item);
+    }
+    function fixtureOpen(url, target) {
+      fixtureRecord("window.open:" + target);
+      window.open(url, target);
+    }
+    (function () {
+      var blank = document.querySelector('[data-testid="about-blank-frame"]');
+      function initializeBlankFrame() {
+        var doc = blank.contentDocument;
+        if (!doc || doc.querySelector('[data-testid="about-blank-link"]')) return;
+        doc.body.innerHTML = "<a data-testid='about-blank-link' href='legacy-table.html?from=about-blank'>about blank link</a><ol id='result-log' data-testid='result-log'><li data-testid='initial-state'>ready:about-blank</li></ol>";
+      }
+      blank.addEventListener("load", initializeBlankFrame);
+      initializeBlankFrame();
+    }());
+  </script>
+</body>
+</html>

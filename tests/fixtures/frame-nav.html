@@ -1,0 +1,23 @@
+<!doctype html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>Frame navigation</title></head>
+<body>
+  <h1>Navigation</h1>
+  <p><a data-testid="frame-link-named" href="frame-content.html?from=named" target="content">Named content frame</a></p>
+  <p><a data-testid="frame-link-self" href="frame-nav.html?from=self" target="_self">Same frame</a></p>
+  <p><a data-testid="frame-link-parent" href="index.html?from=parent" target="_parent">Parent frameset</a></p>
+  <p><a data-testid="frame-link-top" href="index.html?from=top" target="_top">Top window</a></p>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready:frame-nav</li></ol>
+  <script type="text/javascript">
+    document.onclick = function (event) {
+      event = event || window.event;
+      var node = event.target || event.srcElement;
+      if (node && node.tagName === "A") {
+        var item = document.createElement("li");
+        item.appendChild(document.createTextNode("click:" + node.getAttribute("data-testid")));
+        document.getElementById("result-log").appendChild(item);
+      }
+    };
+  </script>
+</body>
+</html>

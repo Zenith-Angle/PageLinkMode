@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "PageLinkMode",
-  "version": "0.4.1",
+  "version": "0.6.1",
   "description": "按跳转分类接管网页内导航，支持全局、站点和单页规则。",
-  "permissions": ["storage", "tabs", "scripting", "activeTab"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "permissions": ["storage", "tabs", "scripting", "activeTab", "webNavigation"],
+  "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "js/background.js"
   },
@@ -20,14 +20,20 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["js/content.js"],
-      "run_at": "document_start"
-    }
-  ],
-  "web_accessible_resources": [
+      "js": ["js/page-bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "match_origin_as_fallback": true,
+      "world": "MAIN"
+    },
     {
-      "resources": ["js/page-bridge.js"],
-      "matches": ["http://*/*", "https://*/*"]
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["js/content.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "match_origin_as_fallback": true
     }
   ],
   "icons": {

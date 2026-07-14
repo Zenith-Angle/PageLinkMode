@@ -7,98 +7,257 @@
   </head>
   <body>
     <main class="options-layout">
-      <section class="hero card">
-        <div class="hero-copy">
-          <p class="eyebrow">PageLinkMode v0.4.1</p>
-          <h1>规则工作台</h1>
-          <p class="subtle">
-            把“哪些跳转留在当前标签页，哪些跳到新标签页，哪些保持网页原生”收敛成一套可查看、可覆写、可回放的规则系统。
-          </p>
+      <header class="app-header">
+        <div class="app-identity">
+          <img src="/icons/icon48.png" alt="" width="36" height="36" />
+          <div>
+            <p class="product-name">PageLinkMode</p>
+            <h1>规则工作台</h1>
+          </div>
         </div>
-        <div class="hero-stats">
-          <article class="stat-pill">
-            <span class="stat-label">分类策略</span>
-            <strong id="category-count">12 类</strong>
-          </article>
-          <article class="stat-pill">
-            <span class="stat-label">站点覆写</span>
-            <strong id="site-count">0 个</strong>
-          </article>
-          <article class="stat-pill">
-            <span class="stat-label">页面规则</span>
-            <strong id="page-count">0 条</strong>
-          </article>
+        <div class="header-metrics" aria-label="规则统计">
+          <div><span>基础分类</span><strong id="category-count">27</strong></div>
+          <div><span>站点覆写</span><strong id="site-count">0</strong></div>
+          <div><span>个性化规则</span><strong id="personal-count">0</strong></div>
+        </div>
+      </header>
+
+      <div class="options-shell">
+        <aside class="workspace-sidebar">
+          <p class="sidebar-label">工作区</p>
+          <nav class="workspace-tabs" aria-label="规则工作台视图">
+            <button type="button" data-workspace-tab="basic" aria-selected="true">基础分类</button>
+            <button type="button" data-workspace-tab="sites" aria-selected="false">站点覆写</button>
+            <button type="button" data-workspace-tab="personal" aria-selected="false">个性化规则</button>
+            <button type="button" data-workspace-tab="debug" aria-selected="false">调试记录</button>
+            <button type="button" data-workspace-tab="pages" aria-selected="false">页面规则</button>
+            <button type="button" data-workspace-tab="backup" aria-selected="false">配置备份</button>
+          </nav>
+        </aside>
+
+        <div class="workspace-content">
+          <p id="config-status" class="status-message" role="status" aria-live="polite" hidden></p>
+
+      <section class="workspace-view" data-workspace-view="basic">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">基础策略</p>
+            <h2>基础分类</h2>
+            <p class="section-description">使用快速预设建立起点，再按分类覆盖具体跳转行为。</p>
+          </div>
+          <span id="active-preset" class="status-badge" data-tone="info">当前：内容</span>
+        </div>
+        <section class="preset-control" aria-labelledby="preset-control-title">
+          <div class="preset-control-head">
+            <div>
+              <strong id="preset-control-title">快速预设</strong>
+              <span id="preset-selection-label">内容</span>
+            </div>
+            <p id="preset-impact">选择档位后预览将被修改的基础分类。</p>
+          </div>
+          <div class="preset-control-body">
+            <div class="scope-control" style="--scope-progress: 25%">
+              <div class="scope-track" aria-hidden="true"></div>
+              <input
+                id="basic-preset-range"
+                class="scope-range"
+                type="range"
+                min="0"
+                max="4"
+                step="1"
+                value="1"
+                aria-label="基础分类快速预设"
+                aria-valuetext="内容"
+              />
+              <div class="scope-scale" aria-hidden="true">
+                <span>精准</span>
+                <span>内容</span>
+                <span>广泛</span>
+                <span>深入</span>
+                <span>最广</span>
+              </div>
+            </div>
+            <button id="preview-preset" type="button" class="secondary-button">预览变更</button>
+          </div>
+        </section>
+        <div id="preset-list" hidden aria-hidden="true"></div>
+        <div class="section-divider"></div>
+        <div id="global-category-rules" class="category-tree"></div>
+        <div class="native-boundaries">
+          <div class="section-head compact"><div><h3>始终保持原生</h3></div></div>
+          <ul>
+            <li>修饰键、中键及页面已取消的点击</li>
+            <li>下载、外部协议与浏览器受限页面</li>
+            <li>命名窗口、父级/顶层 frame 与特殊链接语义</li>
+            <li>缺少用户激活的脚本弹窗</li>
+          </ul>
         </div>
       </section>
 
-      <p id="config-status" class="status-message" role="status" aria-live="polite" hidden></p>
-
-      <section class="card workspace-card">
+      <section class="workspace-view" data-workspace-view="sites" hidden>
         <div class="section-head">
-          <div>
-            <p class="eyebrow">Global Strategy</p>
-            <h2>全局分类策略</h2>
-            <p class="subtle">当页面或站点没有整体强制规则时，默认按这里的分类动作处理。</p>
-          </div>
+          <div><p class="eyebrow">按站点覆盖</p><h2>站点覆写</h2></div>
+          <form id="add-site-form" class="inline-form">
+            <input id="add-site-hostname" type="text" autocomplete="off" placeholder="example.com" aria-label="站点 hostname" />
+            <button type="submit">添加站点</button>
+          </form>
         </div>
-        <div id="global-category-rules" class="matrix-list"></div>
+        <div id="site-rule-cards" class="site-rule-list"></div>
       </section>
 
-      <section class="card workspace-card">
+      <section class="workspace-view personal-workspace" data-workspace-view="personal" hidden>
         <div class="section-head">
-          <div>
-            <p class="eyebrow">Site Override</p>
-            <h2>站点分类覆写</h2>
-            <p class="subtle">按站点覆盖全局分类策略，也可保留当前站点的整体强制模式与启停状态。</p>
-          </div>
+          <div><p class="eyebrow">精确例外</p><h2>个性化规则</h2></div>
+          <button id="new-personal-rule" type="button">新建规则</button>
         </div>
-        <div id="site-rule-cards" class="site-card-list"></div>
+        <div class="split-workspace" data-editor-open="false">
+          <div id="personal-rule-list" class="personal-rule-list"></div>
+          <form id="personal-rule-editor" class="rule-editor" hidden>
+            <input id="personal-rule-id" type="hidden" />
+            <div class="editor-head"><strong id="personal-editor-title">新建规则</strong><button id="close-personal-editor" type="button" class="icon-button" title="关闭" aria-label="关闭">×</button></div>
+            <label><span>名称</span><input id="personal-name" required maxlength="80" /></label>
+            <div class="field-grid two">
+              <label><span>作用域</span><select id="personal-scope-type"><option value="site">站点</option><option value="page">页面</option></select></label>
+              <label><span>站点</span><input id="personal-hostname" required placeholder="example.com" /></label>
+            </div>
+            <label id="personal-page-row" hidden><span>页面 URL</span><input id="personal-page-key" type="url" /></label>
+            <div class="field-grid two">
+              <label><span>来源匹配</span><select id="personal-source-kind"><option value="">不限</option><option value="exact">精确</option><option value="prefix">前缀</option><option value="glob">Glob</option><option value="regex">RE2</option></select></label>
+              <label><span>来源值</span><input id="personal-source-value" /></label>
+              <label><span>目标匹配</span><select id="personal-target-kind"><option value="">不限</option><option value="exact">精确</option><option value="prefix">前缀</option><option value="glob">Glob</option><option value="regex">RE2</option></select></label>
+              <label><span>目标值</span><input id="personal-target-value" /></label>
+            </div>
+            <div class="match-grid">
+              <fieldset class="choice-field"><legend>目标关系 <small>不选则不限</small></legend><div id="personal-relations" class="choice-group"></div></fieldset>
+              <fieldset class="choice-field"><legend>触发方式 <small>不选则不限</small></legend><div id="personal-triggers" class="choice-group"></div></fieldset>
+              <fieldset class="choice-field choice-field-wide"><legend>语义 <small>可同时选择多项</small></legend><div id="personal-semantics" class="choice-group"></div></fieldset>
+              <fieldset class="choice-field"><legend>原生 target <small>不选则不限</small></legend><div id="personal-native-targets" class="choice-group"></div></fieldset>
+              <fieldset class="choice-field"><legend>Frame 环境 <small>不选则不限</small></legend><div id="personal-frame-contexts" class="choice-group"></div></fieldset>
+              <fieldset class="choice-field choice-field-wide"><legend>表单方法 <small>可同时选择多项</small></legend><div id="personal-form-methods" class="choice-group"></div><label class="compact-input"><span>其他方法（逗号分隔）</span><input id="personal-custom-form-methods" placeholder="OPTIONS, PROPFIND" /></label></fieldset>
+            </div>
+            <fieldset class="element-match-field">
+              <legend>元素匹配 <small>均为可选；填写多项时需同时满足</small></legend>
+              <div class="field-grid two">
+                <label><span>元素标签</span><input id="personal-element-tag" placeholder="a、form、area" /></label>
+                <label><span>CSS selector</span><input id="personal-selector" placeholder="a[data-kind='detail']" /></label>
+              </div>
+              <div class="attribute-editor-head"><span>属性键值</span><button id="add-personal-attribute" type="button" class="secondary-button">添加属性</button></div>
+              <div id="personal-attributes" class="attribute-list"></div>
+            </fieldset>
+            <fieldset><legend>动作</legend><div id="personal-action" class="action-group"></div></fieldset>
+            <label class="check-row"><input id="personal-sensitive" type="checkbox" /><span>允许此规则处理已解锁的高风险行为</span></label>
+            <div class="editor-actions"><button id="delete-personal-rule" type="button" class="danger-button" hidden>删除</button><button type="submit">保存规则</button></div>
+          </form>
+        </div>
+        <div class="risk-zone">
+          <div><strong>站点高风险授权</strong><span id="risk-state">未选择站点</span></div>
+          <div class="inline-form"><input id="risk-hostname" placeholder="从当前规则读取站点" aria-label="风险授权站点" readonly /><button id="unlock-risk" type="button">解锁</button><button id="revoke-risk" type="button" class="secondary-button">撤销</button></div>
+        </div>
       </section>
 
-      <section class="card workspace-card">
+      <section class="workspace-view" data-workspace-view="debug" hidden>
         <div class="section-head">
-          <div>
-            <p class="eyebrow">Debug Replay</p>
-            <h2>调试记录</h2>
-            <p class="subtle">最近 50 条命中的导航决策，可按站点筛选，帮助确认分类和最终动作是否符合预期。</p>
-          </div>
-          <div class="toolbar-actions">
-            <label class="filter-field" for="debug-filter">
-              <span>筛选站点</span>
-              <select id="debug-filter"></select>
-            </label>
-            <button id="clear-debug-records" type="button" class="secondary-button">清空记录</button>
-          </div>
+          <div><p class="eyebrow">实际执行</p><h2>调试记录</h2></div>
+          <div class="toolbar-actions"><select id="debug-filter" aria-label="筛选站点"></select><button id="clear-debug-records" type="button" class="secondary-button">清空</button></div>
         </div>
+        <section id="navigation-simulator" class="simulator-panel" aria-labelledby="simulator-title">
+          <div class="simulator-head"><div><h3 id="simulator-title">规则模拟器</h3><p>使用当前本机配置计算，不会执行真实跳转。</p></div><button id="reset-simulator" type="button" class="secondary-button">重置</button></div>
+          <form id="simulator-form" class="simulator-form">
+            <div class="field-grid two">
+              <label><span>来源 URL</span><input id="simulator-source-url" type="url" required placeholder="https://example.com/list" /></label>
+              <label><span>目标 URL</span><input id="simulator-target-url" type="url" required placeholder="https://example.com/detail/1" /></label>
+              <label><span>触发方式</span><select id="simulator-trigger"><option value="anchor">链接</option><option value="form">表单</option><option value="window.open">window.open</option></select></label>
+              <label><span>目标关系</span><select id="simulator-relation"><option value="same-document">同文档</option><option value="same-origin" selected>同源</option><option value="same-site">同站</option><option value="cross-site">跨站</option></select></label>
+              <label><span>原生 target</span><select id="simulator-native-target"><option value="self">self</option><option value="blank">blank</option><option value="named">命名窗口</option><option value="parent">parent</option><option value="top">top</option><option value="unfenced-top">unfencedTop</option></select></label>
+              <label><span>Frame 环境</span><select id="simulator-frame-context"><option value="top">顶层页面</option><option value="same-origin-frame">同源 frame</option><option value="cross-origin-frame">跨源 frame</option></select></label>
+              <label><span>表单方法</span><input id="simulator-form-method" placeholder="GET" /></label>
+              <label><span>用户意图</span><select id="simulator-user-intent"><option value="plain">普通操作</option><option value="modified">修饰键</option><option value="middle">中键</option><option value="script-active">有用户激活的脚本</option><option value="script-passive">无用户激活的脚本</option></select></label>
+              <label><span>原生动作</span><select id="simulator-native-disposition"><option value="same-tab">同标签</option><option value="new-tab">新标签</option><option value="preserve-native">保持原生</option></select></label>
+              <label><span>协议</span><input id="simulator-protocol" value="https:" placeholder="https:" /></label>
+              <label><span>风险等级</span><select id="simulator-risk"><option value="normal">普通</option><option value="sensitive">高风险</option><option value="hard-blocked">技术硬限制</option></select></label>
+              <label><span>技术旁路原因（逗号分隔）</span><input id="simulator-blockers" placeholder="download, external-protocol" /></label>
+            </div>
+            <fieldset class="choice-field simulator-semantics"><legend>语义 <small>至少选择一项</small></legend><div id="simulator-semantics" class="choice-group"></div></fieldset>
+            <label class="check-row"><input id="simulator-can-rewrite" type="checkbox" checked /><span>技术上可以等价改写</span></label>
+            <div class="simulator-actions"><button type="submit">运行模拟</button></div>
+          </form>
+          <div id="simulator-result" class="simulator-result" aria-live="polite" hidden>
+            <div id="simulator-summary" class="simulator-summary"></div>
+            <div class="trace-section"><strong>固定优先级命中链路</strong><ol id="simulator-trace" class="decision-trace"></ol></div>
+          </div>
+        </section>
+        <div class="section-divider"></div>
         <div id="debug-records" class="debug-list"></div>
       </section>
 
-      <section class="card workspace-card">
+      <section class="workspace-view" data-workspace-view="pages" hidden>
         <div class="section-head">
           <div>
-            <p class="eyebrow">Advanced</p>
-            <h2>页面级整体规则</h2>
-            <p class="subtle">这里保留现有的页面级整体强制模式，不扩展为页面级分类矩阵。</p>
+            <p class="eyebrow">页面覆写</p>
+            <h2>页面整体规则</h2>
+            <p class="section-description">为单个页面设置明确的整体打开方式。</p>
           </div>
         </div>
+        <form id="page-rule-form" class="page-rule-form">
+          <label>
+            <span>页面 URL</span>
+            <input id="page-rule-url" type="url" required placeholder="https://example.com/page" />
+          </label>
+          <label>
+            <span>打开方式</span>
+            <select id="page-rule-mode">
+              <option value="same-tab">同标签</option>
+              <option value="new-tab">新标签</option>
+              <option value="preserve-native">保持原生</option>
+            </select>
+          </label>
+          <button type="submit">保存页面规则</button>
+        </form>
         <div id="page-rules" class="rule-list"></div>
       </section>
 
-      <section class="card workspace-card">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Backup</p>
-            <h2>配置备份</h2>
-            <p class="subtle">导出当前完整配置，或从 JSON 文件整份恢复。</p>
-          </div>
-        </div>
-        <div class="config-actions">
-          <button id="export-config" type="button">导出配置</button>
-          <button id="import-config" type="button" class="secondary-button">导入配置</button>
-          <input id="import-config-input" type="file" accept=".json,application/json" hidden />
-        </div>
+      <section class="workspace-view" data-workspace-view="backup" hidden>
+        <div class="section-head"><div><p class="eyebrow">本机配置</p><h2>配置备份</h2></div></div>
+        <div class="config-actions"><button id="export-config" type="button">导出配置</button><button id="import-config" type="button" class="secondary-button">导入配置</button><input id="import-config-input" type="file" accept=".json,application/json" hidden /></div>
       </section>
+        </div>
+      </div>
     </main>
+
+    <dialog id="preset-dialog" class="modal-dialog" aria-labelledby="preset-dialog-title">
+      <form method="dialog">
+        <div class="modal-head">
+          <strong id="preset-dialog-title">应用基础预设</strong>
+          <button value="cancel" class="icon-button" aria-label="关闭">×</button>
+        </div>
+        <p id="preset-dialog-summary"></p>
+        <div id="preset-diff" class="preset-diff"></div>
+        <div class="modal-actions">
+          <button value="cancel" class="secondary-button">取消</button>
+          <button id="confirm-preset" value="default">应用</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="risk-dialog" class="modal-dialog risk-dialog" aria-labelledby="risk-dialog-title">
+      <form id="risk-confirm-form" method="dialog">
+        <div class="modal-head">
+          <strong id="risk-dialog-title">解锁高风险规则</strong>
+          <button value="cancel" class="icon-button" aria-label="关闭">×</button>
+        </div>
+        <ul>
+          <li>认证、支付和写请求可能依赖原始标签页及回调上下文。</li>
+          <li>错误规则可能导致重复提交、登录失败或支付流程中断。</li>
+          <li>授权只对当前输入的站点生效，且仍需逐条启用规则。</li>
+        </ul>
+        <label class="check-row"><input id="risk-acknowledge" type="checkbox" /><span>我理解并承担此站点规则的风险</span></label>
+        <label class="modal-field"><span>输入站点 hostname</span><input id="risk-confirm-hostname" autocomplete="off" /></label>
+        <div class="modal-actions">
+          <button value="cancel" class="secondary-button">取消</button>
+          <button id="confirm-risk" value="default" disabled>解锁站点</button>
+        </div>
+      </form>
+    </dialog>
     <script type="module" src="/src/options.ts"></script>
   </body>
 </html>

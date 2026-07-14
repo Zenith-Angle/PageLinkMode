@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   isAnchorNavigationAlreadyHandled,
+  isAnchorNavigationAlreadyObserved,
+  markAnchorNavigationObserved,
   shouldSkipAnchorNavigationEvent,
+  shouldInterceptNavigation,
   shouldTakeOverAnchorNavigation,
   takeOverAnchorNavigation,
 } from "./anchor-events";
+import { applyNavigationExecutionOutcome } from "../lib/navigation";
 
 test("接管锚点点击时会阻止默认行为、阻止传播并标记事件已处理", () => {
   const { event, counters } = createMouseEvent();
@@ -35,6 +39,27 @@ test("preserve-native 不会进入扩展接管分支", () => {
   assert.equal(isAnchorNavigationAlreadyHandled(event), false);
 });
 
+test("期望跳转方式与浏览器原生行为一致时无需接管", () => {
+  assert.equal(shouldInterceptNavigation("same-tab", "same-tab"), false);
+  assert.equal(shouldInterceptNavigation("new-tab", "new-tab"), false);
+  assert.equal(shouldInterceptNavigation("preserve-native", "same-tab"), false);
+  assert.equal(shouldInterceptNavigation("preserve-native", "new-tab"), false);
+  assert.equal(shouldInterceptNavigation("new-tab", "same-tab"), true);
+  assert.equal(shouldInterceptNavigation("same-tab", "new-tab"), true);
+});
+
+test("capture 阶段观察过 preserve-native 后，bubble 阶段不会重复记录", () => {
+  const { event } = createMouseEvent();
+
+  assert.equal(isAnchorNavigationAlreadyObserved(event), false);
+
+  markAnchorNavigationObserved(event);
+
+  assert.equal(isAnchorNavigationAlreadyObserved(event), true);
+  assert.equal(shouldSkipAnchorNavigationEvent(event, true), true);
+  assert.equal(isAnchorNavigationAlreadyHandled(event), false);
+});
+
 test("事件一旦被扩展接管，后续阶段会直接跳过，避免重复处理", () => {
   const { event } = createMouseEvent();
 
@@ -55,6 +80,38 @@ test("不可取消的事件不会再被扩展接管", () => {
   const { event } = createMouseEvent({ cancelable: false });
 
   assert.equal(shouldSkipAnchorNavigationEvent(event, true), true);
+});
+
+test("脚本生成的不可信点击不会被扩展权限升级为标签页操作", () => {
+  const { event } = createMouseEvent({ isTrusted: false });
+
+  assert.equal(shouldSkipAnchorNavigationEvent(event, true), true);
+});
+
+test("新标签执行失败并退回当前页时不会虚报 requested action 已应用", () => {
+  const decision = {
+    category: "link-same-origin" as const,
+    requestedDisposition: "new-tab" as const,
+    nativeDisposition: "same-tab" as const,
+    disposition: "new-tab" as const,
+    applied: true,
+    reason: "global-category:link-same-origin",
+    resolvedBy: "global-category" as const,
+  };
+
+  assert.deepEqual(
+    applyNavigationExecutionOutcome(decision, {
+      applied: false,
+      disposition: "same-tab",
+      bypassReason: "new-tab-fallback-current-tab",
+    }),
+    {
+      ...decision,
+      applied: false,
+      disposition: "same-tab",
+      bypassReason: "new-tab-fallback-current-tab",
+    },
+  );
 });
 
 function createMouseEvent(

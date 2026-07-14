@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Modern SPA navigation fixture</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    nav a, button { margin-right: 1rem; }
+    #result-log { border: 1px solid #777; min-height: 2rem; padding: 0.75rem 2rem; }
+  </style>
+</head>
+<body>
+  <h1>Modern SPA navigation</h1>
+  <nav aria-label="Application" data-testid="spa-nav">
+    <a data-testid="spa-standard-link" href="modern-spa.html?view=article">Standard anchor</a>
+    <a data-testid="spa-hash-link" href="#settings">Hash route</a>
+    <span data-testid="dynamic-link-slot"></span>
+  </nav>
+  <p>
+    <button type="button" data-testid="spa-push-state">pushState</button>
+    <button type="button" data-testid="spa-replace-state">replaceState</button>
+    <button type="button" data-testid="spa-set-hash">set hash</button>
+  </p>
+  <main id="spa-view" data-testid="spa-view">home</main>
+  <h2>Result log</h2>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready</li></ol>
+  <script>
+    (function () {
+      var log = document.getElementById("result-log");
+      var view = document.getElementById("spa-view");
+      function record(value) {
+        var item = document.createElement("li");
+        item.textContent = value;
+        item.dataset.testid = "log-entry";
+        log.appendChild(item);
+        view.textContent = location.pathname + location.search + location.hash;
+      }
+
+      var dynamic = document.createElement("a");
+      dynamic.href = "modern-spa.html?view=dynamic";
+      dynamic.dataset.testid = "spa-dynamic-link";
+      dynamic.textContent = "Dynamic anchor";
+      document.querySelector('[data-testid="dynamic-link-slot"]').appendChild(dynamic);
+
+      document.querySelector('[data-testid="spa-push-state"]').addEventListener("click", function () {
+        history.pushState({ source: "fixture" }, "", "?view=pushed");
+        record("history:pushState");
+      });
+      document.querySelector('[data-testid="spa-replace-state"]').addEventListener("click", function () {
+        history.replaceState({ source: "fixture" }, "", "?view=replaced");
+        record("history:replaceState");
+      });
+      document.querySelector('[data-testid="spa-set-hash"]').addEventListener("click", function () {
+        location.hash = "profile";
+      });
+      window.addEventListener("hashchange", function () { record("history:hashchange"); });
+      window.addEventListener("popstate", function () { record("history:popstate"); });
+      document.addEventListener("click", function (event) {
+        var link = event.target.closest && event.target.closest("a");
+        if (link) record("click:" + link.dataset.testid);
+      }, true);
+      document.addEventListener("click", function (event) {
+        var link = event.target.closest && event.target.closest("a");
+        if (!link || !/^spa-(?:standard|dynamic|hash)-link$/.test(link.dataset.testid || "")) return;
+        event.preventDefault();
+        history.pushState({ source: "fixture-router" }, "", link.href);
+        record("router:navigate:" + link.dataset.testid);
+      });
+    }());
+  </script>
+</body>
+</html>

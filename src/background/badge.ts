@@ -1,24 +1,45 @@
-import type { RuleSource, SetBadgePayload } from "../lib/types";
+import type { SetBadgePayload } from "../lib/types";
 
-const SOURCE_COLORS: Record<RuleSource, string> = {
-  global: "#64748b",
-  site: "#0f766e",
-  page: "#ea580c",
-  disabled: "#475569",
-};
+const STATUS_ICON_PATHS = {
+  managed: {
+    16: "icons/icon16-managed.png",
+    32: "icons/icon32-managed.png",
+  },
+  unmanaged: {
+    16: "icons/icon16-unmanaged.png",
+    32: "icons/icon32-unmanaged.png",
+  },
+} as const;
 
 export async function updateBadge(payload: SetBadgePayload): Promise<void> {
-  if (!payload.tabId) {
+  if (payload.tabId === undefined) {
     return;
   }
 
-  await chrome.action.setBadgeText({
-    tabId: payload.tabId,
-    text: payload.source === "disabled" ? "关" : payload.mode === "same-tab" ? "同" : "新",
-  });
+  const presentation = getBadgePresentation(payload);
 
-  await chrome.action.setBadgeBackgroundColor({
-    tabId: payload.tabId,
-    color: SOURCE_COLORS[payload.source],
-  });
+  try {
+    await chrome.action.setBadgeText({
+      tabId: payload.tabId,
+      text: presentation.text,
+    });
+
+    await chrome.action.setIcon({
+      tabId: payload.tabId,
+      path: presentation.path,
+    });
+  } catch {
+    // 图标只是状态提示；构建发布或扩展重载的瞬间不可用时不能影响导航主链路。
+  }
+}
+
+export function getBadgePresentation(payload: SetBadgePayload): {
+  text: string;
+  path: { readonly 16: string; readonly 32: string };
+} {
+  // 原生 badge 有不可控的最小底板；状态点直接合成到图标，才能保持小而圆。
+  return {
+    text: "",
+    path: payload.managed ? STATUS_ICON_PATHS.managed : STATUS_ICON_PATHS.unmanaged,
+  };
 }

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Form navigation fixture</title>
+  <style>form { border: 1px solid #999; margin: 1rem 0; padding: 1rem; } #result-log { border: 1px solid #777; min-height: 2rem; padding: 0.75rem 2rem; }</style>
+</head>
+<body>
+  <h1>Form navigation</h1>
+  <form id="get-form" data-testid="get-form" method="get" action="forms.html">
+    <label>Query <input data-testid="get-query" name="q" value="fixture"></label>
+    <button data-testid="get-submit-basic" type="submit" name="mode" value="basic">Search</button>
+    <button data-testid="get-submit-advanced" type="submit" name="mode" value="advanced">Advanced search</button>
+  </form>
+  <form id="post-form" data-testid="post-form" method="post" action="forms.html">
+    <label>Message <input data-testid="post-message" name="message" value="do-not-replay"></label>
+    <button data-testid="post-submit" type="submit" name="intent" value="save">Save with POST</button>
+    <button data-testid="post-override-get" type="submit" name="intent" value="preview" formmethod="get" formaction="forms.html">Preview with GET</button>
+  </form>
+  <button data-testid="request-submit" type="button">requestSubmit advanced</button>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready</li></ol>
+  <script>
+    (function () {
+      var log = document.getElementById("result-log");
+      function record(value) {
+        var item = document.createElement("li");
+        item.dataset.testid = "log-entry";
+        item.textContent = value;
+        log.appendChild(item);
+      }
+      document.addEventListener("submit", function (event) {
+        var submitter = event.submitter;
+        record("submit:" + event.target.dataset.testid + ":submitter=" + (submitter ? submitter.dataset.testid : "none"));
+      }, true);
+      document.querySelector('[data-testid="request-submit"]').addEventListener("click", function () {
+        document.getElementById("get-form").requestSubmit(document.querySelector('[data-testid="get-submit-advanced"]'));
+      });
+    }());
+  </script>
+</body>
+</html>

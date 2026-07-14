@@ -2,612 +2,306 @@ import "./styles/base.css";
 import "./styles/popup.css";
 
 import type { RuntimeRequest, RuntimeResponse } from "./lib/messages";
-import type { NavigationMode, PopupContext, RuleMode } from "./lib/types";
+import type {
+  BasicPresetId,
+  ExtensionState,
+  NavigationDebugRecord,
+  NavigationDisposition,
+  PopupContext,
+  RuleMode,
+  TakeoverScopeLevel,
+} from "./lib/types";
 import {
-  buildPermissionPatternForUrl,
-  buildPermissionPatterns,
-  isSupportedPageUrl,
-} from "./lib/url";
+  scheduleTakeoverScopeRangeRecovery,
+  syncTakeoverScopeRange,
+} from "./lib/scope-control";
+import { normalizePageUrl } from "./lib/url";
 
-interface PopupUiState {
-  isSiteEnabled: boolean;
-  isSiteOverrideEnabled: boolean;
-  isPageOverrideEnabled: boolean;
-  siteSelection: NavigationMode;
-  pageSelection: NavigationMode;
-}
+const PRESETS: Array<{ id: Exclude<BasicPresetId, "custom">; label: string; description: string }> = [
+  { id: "precise", label: "精准", description: "仅普通同源内容" },
+  { id: "content", label: "内容", description: "内容优先，交互原生" },
+  { id: "broad", label: "广泛", description: "加入常见导航" },
+  { id: "deep", label: "深入", description: "加入 GET 表单" },
+  { id: "widest", label: "最广", description: "加入脚本打开" },
+];
+const PRESET_BY_LEVEL = PRESETS.map((preset) => preset.id);
 
-type PageAccessState = "ready" | "pending" | "unavailable";
-
-const statusCard = document.querySelector<HTMLElement>("#status-card");
-const siteEnabledRow = document.querySelector<HTMLElement>("#site-enabled-row");
-const siteEnabledToggle = document.querySelector<HTMLButtonElement>("#site-enabled-toggle");
-const siteEnabledText = document.querySelector<HTMLElement>("#site-enabled-text");
-const statusText = document.querySelector<HTMLParagraphElement>("#status-text");
-const hostValue = document.querySelector<HTMLElement>("#host-value");
-const pageValue = document.querySelector<HTMLElement>("#page-value");
-const effectiveValue = document.querySelector<HTMLElement>("#effective-value");
-const sourceValue = document.querySelector<HTMLElement>("#source-value");
-const statusChip = document.querySelector<HTMLElement>("#status-chip");
-const permissionCard = document.querySelector<HTMLElement>("#permission-card");
-const permissionTitle = document.querySelector<HTMLElement>("#permission-title");
-const permissionDescription = document.querySelector<HTMLElement>("#permission-description");
-const grantAccessButton = document.querySelector<HTMLButtonElement>("#grant-access");
-const openOptionsButton = document.querySelector<HTMLButtonElement>("#open-options");
-const saveNote = document.querySelector<HTMLElement>("#save-note");
-const siteSection = document.querySelector<HTMLElement>("#site-section");
-const pageSection = document.querySelector<HTMLElement>("#page-section");
-const globalSection = document.querySelector<HTMLElement>("#global-section");
-const siteOverrideToggle = document.querySelector<HTMLButtonElement>("#site-override-toggle");
-const pageOverrideToggle = document.querySelector<HTMLButtonElement>("#page-override-toggle");
-const siteModeGroup = document.querySelector<HTMLElement>("#site-mode-group");
-const pageModeGroup = document.querySelector<HTMLElement>("#page-mode-group");
-const globalModeGroup = document.querySelector<HTMLElement>("#global-mode-group");
-const siteHelperText = document.querySelector<HTMLElement>("#site-helper-text");
-const pageHelperText = document.querySelector<HTMLElement>("#page-helper-text");
-
-let activeTabId: number | undefined;
+let activeTab: chrome.tabs.Tab | null = null;
 let currentContext: PopupContext | null = null;
-let pageAccessState: PageAccessState = "unavailable";
-let currentUiState: PopupUiState | null = null;
-let lastPermissionRequestSucceeded = false;
-let sitePermissionGranted = false;
-let saveNoteTimeoutId: number | undefined;
+let latestDecision: NavigationDebugRecord | null = null;
+let currentPresetId: BasicPresetId = "content";
+let selectedPreset: Exclude<BasicPresetId, "custom"> = "content";
+let cancelPresetRangeRecovery: (() => void) | null = null;
+let hideStatusTimer: number | undefined;
+
+const byId = <T extends HTMLElement>(id: string): T => {
+  const element = document.getElementById(id);
+  if (!element) throw new Error(`缺少界面元素 #${id}`);
+  return element as T;
+};
 
 document.addEventListener("DOMContentLoaded", () => {
-  bindEvents();
-  void initializePopup();
+  bindActions();
+  void initialize();
 });
 
-async function initializePopup(): Promise<void> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  activeTabId = tab?.id;
+window.addEventListener("pageshow", () => beginPresetRangeRecovery(selectedPreset));
 
-  if (!tab?.url || !isSupportedPageUrl(tab.url)) {
+function bindActions(): void {
+  byId<HTMLButtonElement>("open-options").addEventListener("click", () => void chrome.runtime.openOptionsPage());
+  byId<HTMLButtonElement>("site-enabled").addEventListener("click", () => void toggleSiteEnabled());
+  byId<HTMLButtonElement>("open-personal-rules").addEventListener("click", () => void openPersonalRules("page"));
+  byId<HTMLButtonElement>("open-site-personal").addEventListener("click", () => void openPersonalRules("site"));
+  byId<HTMLButtonElement>("open-page-personal").addEventListener("click", () => void openPersonalRules("page"));
+  const presetRange = byId<HTMLInputElement>("popup-preset-range");
+  presetRange.addEventListener("pointerdown", stopPresetRangeRecovery);
+  presetRange.addEventListener("keydown", stopPresetRangeRecovery);
+  presetRange.addEventListener("input", () => {
+    stopPresetRangeRecovery();
+    const preset = readPresetRangeValue(presetRange);
+    if (preset) {
+      selectedPreset = preset;
+      renderPresetControl(preset);
+    }
+  });
+  presetRange.addEventListener("change", () => {
+    const preset = readPresetRangeValue(presetRange);
+    if (preset) void openPresetPreview(preset);
+  });
+  byId("site-rule-actions").replaceWith(createActionGroup("site-rule-actions", (mode) => void setSiteRule(mode)));
+  byId("page-rule-actions").replaceWith(createActionGroup("page-rule-actions", (mode) => void setPageRule(mode)));
+}
+
+async function initialize(): Promise<void> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    activeTab = tab ?? null;
+    if (!tab?.url) return renderUnsupported();
+    const [context, records, state] = await Promise.all([
+      send<PopupContext>({ type: "plm:get-popup-context", url: tab.url }),
+      send<NavigationDebugRecord[]>({ type: "plm:get-debug-records" }).catch(() => []),
+      send<ExtensionState>({ type: "plm:get-state" }),
+    ]);
+    currentPresetId = state.presetId;
+    selectedPreset = currentPresetId === "custom" ? "content" : currentPresetId;
+    currentContext = context;
+    latestDecision = records.find((record) => normalizePageUrl(record.pageUrl) === context.pageKey) ?? null;
+    renderContext(currentContext);
+  } catch (error) {
     renderUnsupported();
-    return;
+    showStatus(`读取失败：${getErrorMessage(error)}`, "error");
   }
-
-  currentContext = (await chrome.runtime.sendMessage({
-    type: "plm:get-popup-context",
-    url: tab.url,
-  } as RuntimeRequest)) as PopupContext;
-  sitePermissionGranted =
-    currentContext.siteAuthorizationRecorded ||
-    (await resolvePersistentSitePermissionState(currentContext.url, currentContext.hostname));
-  pageAccessState = await resolvePageAccessState(tab.id);
-
-  currentUiState = derivePopupUiState(currentContext);
-  renderContext(currentContext, currentUiState);
 }
 
-function bindEvents(): void {
-  grantAccessButton?.addEventListener("click", () => {
-    void handlePermissionAction();
-  });
-  openOptionsButton?.addEventListener("click", () => {
-    void chrome.runtime.openOptionsPage();
-  });
-  siteEnabledToggle?.addEventListener("click", () => {
-    void handleSiteEnabledToggle();
-  });
-  siteOverrideToggle?.addEventListener("click", () => {
-    void handleSiteOverrideToggle();
-  });
-  pageOverrideToggle?.addEventListener("click", () => {
-    void handlePageOverrideToggle();
-  });
-
-  bindSegmentedGroup(globalModeGroup, (mode) => setGlobalMode(mode));
-  bindSegmentedGroup(siteModeGroup, (mode) => setSiteExplicitMode(mode));
-  bindSegmentedGroup(pageModeGroup, (mode) => setPageExplicitMode(mode));
-}
-
-async function handlePermissionAction(): Promise<void> {
-  if (sitePermissionGranted && activeTabId) {
-    await reloadTabAndWait(activeTabId);
-    await initializePopup();
-    return;
-  }
-
-  await requestSitePermission();
-}
-
-function bindSegmentedGroup(
-  group: HTMLElement | null,
-  handler: (mode: NavigationMode) => void,
-): void {
-  group?.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const mode = button.dataset.mode;
-      if (mode === "same-tab" || mode === "new-tab") {
-        void handler(mode);
-      }
-    });
-  });
-}
-
-function derivePopupUiState(context: PopupContext): PopupUiState {
-  return {
-    isSiteEnabled: context.siteEnabled,
-    isSiteOverrideEnabled: context.siteMode !== "inherit",
-    isPageOverrideEnabled: context.pageMode !== "inherit",
-    siteSelection:
-      context.siteMode === "inherit" ? getOppositeMode(context.globalMode) : context.siteMode,
-    pageSelection:
-      context.pageMode === "inherit"
-        ? getOppositeMode(context.effectiveMode)
-        : context.pageMode,
-  };
+function renderContext(context: PopupContext): void {
+  if (!context.supported) return renderUnsupported();
+  const band = byId("status-band");
+  band.dataset.state = context.siteEnabled ? "managed" : "disabled";
+  byId("status-label").textContent = context.siteEnabled ? "当前站点已托管" : "当前站点已停用";
+  const toggle = byId<HTMLButtonElement>("site-enabled");
+  toggle.disabled = false;
+  toggle.setAttribute("aria-checked", String(context.siteEnabled));
+  byId("host-value").textContent = context.hostname;
+  byId("context-summary").textContent = context.siteEnabled
+    ? renderContextSummary(context)
+    : "所有规则已保留，当前页面按网站原生行为处理。";
+  byId("decision-source").textContent = renderDecisionSummary(context, latestDecision);
+  syncActionGroup(byId("site-rule-actions"), context.siteMode);
+  syncActionGroup(byId("page-rule-actions"), context.pageMode);
+  byId("site-rule-source").textContent = context.siteMode === "inherit" ? "继承基础分类" : renderRuleMode(context.siteMode);
+  byId("page-rule-source").textContent = context.pageMode === "inherit" ? "继承站点" : renderRuleMode(context.pageMode);
+  const personalCount = context.personalRules.filter((rule) =>
+    rule.scope.hostname === context.hostname &&
+    (rule.scope.type === "site" || rule.scope.pageKey === context.pageKey),
+  ).length;
+  byId("personal-rule-count").textContent = `当前范围 ${personalCount} 条`;
+  renderPresetControl(selectedPreset);
+  beginPresetRangeRecovery(selectedPreset);
 }
 
 function renderUnsupported(): void {
-  statusCard?.classList.add("is-unsupported");
-  statusCard?.setAttribute("data-site-enabled", "true");
-  siteEnabledRow!.hidden = true;
-  hostValue!.textContent = "当前页面不可用";
-  effectiveValue!.textContent = "无法接管";
-  sourceValue!.textContent = "来源：浏览器受限页面";
-  pageValue!.textContent = "请切换到普通网页后再使用。";
-  statusChip!.textContent = "不支持";
-  statusChip!.dataset.state = "muted";
-  statusText!.textContent = "当前页面不支持接管，例如 chrome:// 页面、扩展页或商店页面。";
-  permissionCard!.hidden = true;
-  siteSection!.hidden = true;
-  pageSection!.hidden = true;
-  globalSection!.hidden = true;
+  const band = byId("status-band");
+  band.dataset.state = "unsupported";
+  byId("status-label").textContent = "当前页面不可用";
+  byId("host-value").textContent = "浏览器受限页面";
+  byId("context-summary").textContent = "PageLinkMode 只处理可注入的普通 HTTP/HTTPS 页面。";
+  byId("decision-source").textContent = "当前命中来源：浏览器技术限制";
+  byId<HTMLButtonElement>("site-enabled").disabled = true;
+  byId<HTMLButtonElement>("open-personal-rules").disabled = true;
+  byId<HTMLButtonElement>("open-site-personal").disabled = true;
+  byId<HTMLButtonElement>("open-page-personal").disabled = true;
+  byId<HTMLInputElement>("popup-preset-range").disabled = true;
+  document.querySelectorAll<HTMLButtonElement>(".action-group button").forEach((button) => { button.disabled = true; });
 }
 
-function renderContext(context: PopupContext, uiState: PopupUiState): void {
-  const pageReady = pageAccessState === "ready";
-  const canEditRule = sitePermissionGranted && context.siteEnabled;
-
-  siteEnabledRow!.hidden = false;
-  siteSection!.hidden = false;
-  pageSection!.hidden = false;
-  globalSection!.hidden = false;
-  statusCard?.classList.remove("is-unsupported");
-  statusCard?.setAttribute("data-site-enabled", String(context.siteEnabled));
-
-  updateSwitchState(siteEnabledToggle, uiState.isSiteEnabled, false);
-  setHelperText(
-    siteEnabledText,
-    context.siteEnabled
-      ? "开启时由扩展接管当前站点的网页内跳转。"
-      : "关闭后回退为浏览器原生导航，重新开启后恢复这里的规则。",
-  );
-  hostValue!.textContent = context.hostname;
-  pageValue!.textContent = context.pageKey;
-  effectiveValue!.textContent = context.siteEnabled
-    ? context.effectiveMode === "same-tab"
-      ? "同标签页"
-      : "新标签页"
-    : "不干预";
-  sourceValue!.textContent = `来源：${renderSourceText(context.effectiveSource)}`;
-  statusChip!.textContent = !context.siteEnabled
-    ? "已停用"
-    : context.effectiveMode === "same-tab"
-      ? "当前页"
-      : "新标签";
-  statusChip!.dataset.state = !context.siteEnabled
-    ? "disabled"
-    : context.effectiveMode === "same-tab"
-      ? "same"
-      : "new";
-
-  statusText!.textContent = renderAccessDescription(context, pageAccessState, sitePermissionGranted);
-  renderPermissionState(pageAccessState, sitePermissionGranted);
-
-  permissionCard!.hidden = !context.siteEnabled || (sitePermissionGranted && pageReady);
-
-  updateSwitchState(siteOverrideToggle, uiState.isSiteOverrideEnabled, !canEditRule);
-  updateSwitchState(pageOverrideToggle, uiState.isPageOverrideEnabled, !canEditRule);
-  siteSection!.classList.toggle("is-muted", !context.siteEnabled);
-  pageSection!.classList.toggle("is-muted", !context.siteEnabled);
-
-  siteModeGroup!.hidden = !uiState.isSiteOverrideEnabled;
-  pageModeGroup!.hidden = !uiState.isPageOverrideEnabled;
-
-  setHelperText(
-    siteHelperText,
-    !context.siteEnabled
-      ? uiState.isSiteOverrideEnabled
-        ? `当前站点已停用，重新开启后恢复为${renderModeLabel(uiState.siteSelection)}。`
-        : "当前站点已停用，重新开启后才会按这里的规则生效。"
-      : uiState.isSiteOverrideEnabled
-        ? `当前站点固定为${renderModeLabel(uiState.siteSelection)}。`
-        : `关闭时继承全局默认；启用后默认切到${renderModeLabel(uiState.siteSelection)}。`,
-  );
-  setHelperText(
-    pageHelperText,
-    !context.siteEnabled
-      ? uiState.isPageOverrideEnabled
-        ? `当前站点已停用，重新开启后恢复为${renderModeLabel(uiState.pageSelection)}。`
-        : "当前站点已停用，重新开启后才会按这里的规则生效。"
-      : uiState.isPageOverrideEnabled
-        ? `当前页面固定为${renderModeLabel(uiState.pageSelection)}。`
-        : `关闭时继承站点或全局规则；启用后默认切到${renderModeLabel(uiState.pageSelection)}。`,
-  );
-
-  setSegmentedSelection(globalModeGroup, context.globalMode, false);
-  setSegmentedSelection(siteModeGroup, uiState.siteSelection, !canEditRule);
-  setSegmentedSelection(pageModeGroup, uiState.pageSelection, !canEditRule);
-}
-
-function renderStatusDescription(context: PopupContext): string {
-  if (!context.siteEnabled) {
-    return "当前站点已停用，扩展不会拦截这个网站的链接、表单或脚本打开行为。";
-  }
-
-  if (context.pageMode === "inherit" && context.siteMode === "inherit") {
-    return "当前页面正在继承全局默认模式。";
-  }
-
-  if (context.pageMode === "inherit" && context.siteMode !== "inherit") {
-    return "当前页面正在继承当前站点规则。";
-  }
-
-  return "当前页面已启用独立规则，会优先覆盖站点和全局默认。";
-}
-
-function renderAccessDescription(
-  context: PopupContext,
-  accessState: PageAccessState,
-  hasSitePermission: boolean,
-): string {
-  if (!context.siteEnabled) {
-    return "当前站点已停用。刷新当前页面后，这个网站会回退为浏览器原生导航，重新开启后会恢复原有规则。";
-  }
-
-  if (hasSitePermission && accessState === "ready") {
-    return renderStatusDescription(context);
-  }
-
-  if (!hasSitePermission && accessState === "ready") {
-    return "当前页目前只是临时可访问。若要设置站点级和页面级规则，并让配置在后续访问中持续生效，请先授权当前站点。";
-  }
-
-  if (!hasSitePermission) {
-    return "当前站点尚未授权。授权后，才能设置站点级和页面级规则，并在后续访问中持续生效。";
-  }
-
-  if (accessState === "pending") {
-    return "当前站点已经授权。请刷新当前页面后继续，扩展会在刷新后重新接管这里的网页跳转。";
-  }
-
-  return "当前站点已经授权，但当前页还没有被扩展接管。请刷新当前页面后再试。";
-}
-
-function renderPermissionState(accessState: PageAccessState, hasSitePermission: boolean): void {
-  if (!permissionTitle || !permissionDescription || !grantAccessButton) {
-    return;
-  }
-
-  if (currentContext && !currentContext.siteEnabled) {
-    permissionTitle.textContent = "当前站点已停用";
-    permissionDescription.textContent = "重新开启后，如需持久规则，再按当前授权状态继续配置。";
-    grantAccessButton.textContent = "授权当前站点";
-    return;
-  }
-
-  if (!hasSitePermission && accessState === "ready") {
-    permissionTitle.textContent = "当前站点尚未授权";
-    permissionDescription.textContent =
-      "当前标签页现在只是临时可访问。若要设置站点级和页面级规则，请先授权当前站点。";
-    grantAccessButton.textContent = "授权当前站点";
-    return;
-  }
-
-  if (!hasSitePermission) {
-    permissionTitle.textContent = "当前站点未授权";
-    permissionDescription.textContent =
-      "授权后，才能设置站点级和页面级规则，并在后续访问中持续生效。";
-    grantAccessButton.textContent = "授权当前站点";
-    return;
-  }
-
-  if (accessState !== "ready") {
-    permissionTitle.textContent = "当前站点已授权";
-    permissionDescription.textContent =
-      "站点授权已经完成，但当前页还没有被扩展重新接管。请刷新当前页面后继续。";
-    grantAccessButton.textContent = "刷新当前页面";
-    return;
-  }
-
-  permissionTitle.textContent = "当前站点已授权";
-  permissionDescription.textContent = "当前页面已经可以被扩展稳定接管。";
-  grantAccessButton.textContent = "授权当前站点";
-}
-
-function renderSourceText(source: PopupContext["effectiveSource"]): string {
-  if (source === "disabled") {
-    return "站点已停用";
-  }
-  if (source === "page") {
-    return "页面规则";
-  }
-  if (source === "site") {
-    return "站点规则";
-  }
-  return "全局默认";
-}
-
-function renderModeLabel(mode: NavigationMode): string {
-  return mode === "same-tab" ? "同标签页" : "新标签页";
-}
-
-function updateSwitchState(
-  button: HTMLButtonElement | null,
-  pressed: boolean,
-  disabled: boolean,
-): void {
-  if (!button) {
-    return;
-  }
-
-  button.setAttribute("aria-pressed", String(pressed));
-  button.classList.toggle("is-on", pressed);
-  button.disabled = disabled;
-}
-
-function setHelperText(target: HTMLElement | null, text: string): void {
-  if (target) {
-    target.textContent = text;
-  }
-}
-
-function setSegmentedSelection(
-  group: HTMLElement | null,
-  value: NavigationMode,
-  disabled: boolean,
-): void {
-  group?.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((button) => {
-    const selected = button.dataset.mode === value;
-    button.classList.toggle("is-selected", selected);
-    button.setAttribute("aria-pressed", String(selected));
-    button.disabled = disabled;
-  });
-
-  if (group) {
-    group.classList.toggle("is-disabled", disabled);
-  }
-}
-
-async function requestSitePermission(): Promise<void> {
-  if (!currentContext) {
-    return;
-  }
-
-  lastPermissionRequestSucceeded = await chrome.permissions.request({
-    origins: buildPermissionPatterns(currentContext.hostname),
-  });
-
-  if (lastPermissionRequestSucceeded) {
-    await chrome.runtime.sendMessage({
-      type: "plm:mark-site-authorized",
-      hostname: currentContext.hostname,
-    } as RuntimeRequest);
-    showSaveNote("站点已授权，刷新当前页面后生效。");
-  } else {
-    showSaveNote("未完成授权，站点级和页面级规则仍不可用。");
-  }
-
-  await initializePopup();
-}
-
-async function handleSiteEnabledToggle(): Promise<void> {
-  if (!currentContext) {
-    return;
-  }
-
-  await setSiteEnabled(!currentContext.siteEnabled);
-}
-
-async function handleSiteOverrideToggle(): Promise<void> {
-  if (!currentContext || !currentUiState || !sitePermissionGranted) {
-    return;
-  }
-
-  await toggleSiteOverride(!currentUiState.isSiteOverrideEnabled);
-}
-
-async function handlePageOverrideToggle(): Promise<void> {
-  if (!currentContext || !currentUiState || !sitePermissionGranted) {
-    return;
-  }
-
-  await togglePageOverride(!currentUiState.isPageOverrideEnabled);
-}
-
-async function setSiteEnabled(enabled: boolean): Promise<void> {
-  if (!currentContext) {
-    return;
-  }
-
-  await chrome.runtime.sendMessage({
-    type: "plm:set-site-enabled",
-    hostname: currentContext.hostname,
-    enabled,
-  } as RuntimeRequest);
-  await refreshPopup({ reloadTab: false });
-  showSaveNote(
-    enabled
-      ? "当前站点已重新启用，刷新当前页面后恢复生效。"
-      : "当前站点已停用，刷新当前页面后停止生效。",
-  );
-}
-
-async function toggleSiteOverride(enabled: boolean): Promise<void> {
-  if (!currentContext || !currentUiState) {
-    return;
-  }
-
-  const mode = enabled ? currentUiState.siteSelection : "inherit";
-  await sendRuleUpdate("plm:set-site-rule", currentContext.hostname, mode);
-  await refreshPopup({ reloadTab: false });
-  showSaveNote("站点规则已保存，刷新当前页面后生效。");
-}
-
-async function togglePageOverride(enabled: boolean): Promise<void> {
-  if (!currentContext || !currentUiState) {
-    return;
-  }
-
-  const mode = enabled ? currentUiState.pageSelection : "inherit";
-  await sendRuleUpdate("plm:set-page-rule", currentContext.pageKey, mode);
-  await refreshPopup({ reloadTab: false });
-  showSaveNote("页面规则已保存，刷新当前页面后生效。");
-}
-
-async function setSiteExplicitMode(mode: NavigationMode): Promise<void> {
-  if (!currentContext || !sitePermissionGranted) {
-    return;
-  }
-
-  await sendRuleUpdate("plm:set-site-rule", currentContext.hostname, mode);
-  await refreshPopup({ reloadTab: false });
-  showSaveNote("站点规则已保存，刷新当前页面后生效。");
-}
-
-async function setPageExplicitMode(mode: NavigationMode): Promise<void> {
-  if (!currentContext || !sitePermissionGranted) {
-    return;
-  }
-
-  await sendRuleUpdate("plm:set-page-rule", currentContext.pageKey, mode);
-  await refreshPopup({ reloadTab: false });
-  showSaveNote("页面规则已保存，刷新当前页面后生效。");
-}
-
-async function setGlobalMode(mode: NavigationMode): Promise<void> {
-  await chrome.runtime.sendMessage({
-    type: "plm:set-global-mode",
-    mode,
-  } as RuntimeRequest);
-  await refreshPopup({ reloadTab: false });
-  showSaveNote("默认跳转方式已保存，刷新当前页面后生效。");
-}
-
-async function sendRuleUpdate(
-  type: "plm:set-site-rule" | "plm:set-page-rule",
-  value: string,
-  mode: RuleMode,
-): Promise<void> {
-  if (type === "plm:set-site-rule") {
-    await chrome.runtime.sendMessage({
-      type,
-      hostname: value,
-      mode,
-    } as RuntimeRequest);
-    return;
-  }
-
-  await chrome.runtime.sendMessage({
-    type,
-    url: value,
-    mode,
-  } as RuntimeRequest);
-}
-
-async function refreshPopup(options?: { reloadTab?: boolean }): Promise<void> {
-  if (options?.reloadTab !== false && pageAccessState === "ready" && activeTabId) {
-    await reloadTabAndWait(activeTabId);
-  }
-  await initializePopup();
-}
-
-function getOppositeMode(mode: NavigationMode): NavigationMode {
-  return mode === "same-tab" ? "new-tab" : "same-tab";
-}
-
-async function resolvePageAccessState(tabId?: number): Promise<PageAccessState> {
-  if (tabId === undefined) {
-    return lastPermissionRequestSucceeded ? "pending" : "unavailable";
-  }
-
+async function toggleSiteEnabled(): Promise<void> {
+  if (!currentContext) return;
   try {
-    const response = (await chrome.tabs.sendMessage(tabId, {
-      type: "plm:ping-content",
-    } as RuntimeRequest)) as RuntimeResponse | undefined;
-
-    if (isOkResponse(response)) {
-      lastPermissionRequestSucceeded = false;
-      return "ready";
-    }
-  } catch {
-    // 当前页面没有可通信的 content script，视为尚未完成接管。
-  }
-
-  return lastPermissionRequestSucceeded ? "pending" : "unavailable";
+    await send({ type: "plm:set-site-enabled", hostname: currentContext.hostname, enabled: !currentContext.siteEnabled });
+    await refreshAfterRuleChange();
+  } catch (error) { showStatus(`保存失败：${getErrorMessage(error)}`, "error"); }
 }
 
-async function resolvePersistentSitePermissionState(rawUrl: string, hostname: string): Promise<boolean> {
-  if (!rawUrl || !hostname) {
-    return false;
-  }
-
+async function setSiteRule(mode: RuleMode): Promise<void> {
+  if (!currentContext) return;
   try {
-    const hasFullSitePermission = await chrome.permissions.contains({
-      origins: buildPermissionPatterns(hostname),
-    });
-    if (hasFullSitePermission) {
-      return true;
-    }
-
-    return await chrome.permissions.contains({
-      origins: [buildPermissionPatternForUrl(rawUrl)],
-    });
-  } catch {
-    return false;
-  }
+    await send({ type: "plm:set-site-rule", hostname: currentContext.hostname, mode });
+    await refreshAfterRuleChange();
+  } catch (error) { showStatus(`保存失败：${getErrorMessage(error)}`, "error"); }
 }
 
-async function reloadTabAndWait(tabId: number): Promise<void> {
-  await new Promise<void>((resolve) => {
-    let finished = false;
-    const timeoutId = window.setTimeout(finish, 3000);
+async function setPageRule(mode: RuleMode): Promise<void> {
+  if (!currentContext) return;
+  try {
+    await send({ type: "plm:set-page-rule", url: currentContext.url, mode });
+    await refreshAfterRuleChange();
+  } catch (error) { showStatus(`保存失败：${getErrorMessage(error)}`, "error"); }
+}
 
-    const handleUpdated = (updatedTabId: number, changeInfo: { status?: string }) => {
-      if (updatedTabId === tabId && changeInfo.status === "complete") {
-        finish();
-      }
-    };
+async function refreshAfterRuleChange(): Promise<void> {
+  if (!currentContext) return;
+  currentContext = await send<PopupContext>({ type: "plm:get-popup-context", url: currentContext.url });
+  latestDecision = null;
+  renderContext(currentContext);
+  if (activeTab?.id !== undefined) await chrome.tabs.reload(activeTab.id);
+  showStatus("规则已保存。", "success");
+}
 
-    function finish(): void {
-      if (finished) {
-        return;
-      }
+async function openPersonalRules(scope: "site" | "page"): Promise<void> {
+  if (!currentContext) return;
+  const url = new URL(chrome.runtime.getURL("src/options.html"));
+  url.searchParams.set("view", "personal");
+  url.searchParams.set("hostname", currentContext.hostname);
+  url.searchParams.set("scope", scope);
+  if (scope === "page") url.searchParams.set("page", currentContext.pageKey);
+  await chrome.tabs.create({ url: url.toString() });
+  window.close();
+}
 
-      finished = true;
-      window.clearTimeout(timeoutId);
-      chrome.tabs.onUpdated.removeListener(handleUpdated);
-      resolve();
-    }
+async function openPresetPreview(preset: Exclude<BasicPresetId, "custom">): Promise<void> {
+  const url = new URL(chrome.runtime.getURL("src/options.html"));
+  url.searchParams.set("view", "basic");
+  url.searchParams.set("preset", preset);
+  await chrome.tabs.create({ url: url.toString() });
+  window.close();
+}
 
-    chrome.tabs.onUpdated.addListener(handleUpdated);
-    void chrome.tabs.reload(tabId).catch(() => {
-      finish();
-    });
+function renderPresetControl(preset: Exclude<BasicPresetId, "custom">): void {
+  const definition = PRESETS.find((candidate) => candidate.id === preset)!;
+  const level = PRESET_BY_LEVEL.indexOf(preset) as TakeoverScopeLevel;
+  const range = byId<HTMLInputElement>("popup-preset-range");
+  syncTakeoverScopeRange(range, level);
+  range.setAttribute("aria-valuetext", `${definition.label}：${definition.description}，待确认应用`);
+  const isCurrent = currentPresetId !== "custom" && currentPresetId === preset;
+  byId<HTMLOutputElement>("popup-preset-label").value = isCurrent
+    ? `当前：${definition.label}`
+    : currentPresetId === "custom"
+      ? `自定义 · 待选${definition.label}`
+      : `待选：${definition.label}`;
+}
+
+function beginPresetRangeRecovery(preset: Exclude<BasicPresetId, "custom">): void {
+  stopPresetRangeRecovery();
+  cancelPresetRangeRecovery = scheduleTakeoverScopeRangeRecovery(
+    byId<HTMLInputElement>("popup-preset-range"),
+    PRESET_BY_LEVEL.indexOf(preset) as TakeoverScopeLevel,
+    window,
+  );
+}
+
+function stopPresetRangeRecovery(): void {
+  cancelPresetRangeRecovery?.();
+  cancelPresetRangeRecovery = null;
+}
+
+function readPresetRangeValue(range: HTMLInputElement): Exclude<BasicPresetId, "custom"> | null {
+  const level = Number(range.value);
+  return Number.isInteger(level) ? PRESET_BY_LEVEL[level] ?? null : null;
+}
+
+function createActionGroup(id: string, onSelect: (mode: RuleMode) => void): HTMLElement {
+  const group = document.createElement("div");
+  group.id = id;
+  group.className = "action-group";
+  const options: Array<[RuleMode, string]> = [
+    ["inherit", "继承"], ["same-tab", "同标签"], ["new-tab", "新标签"], ["preserve-native", "原生"],
+  ];
+  options.forEach(([mode, label]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.value = mode;
+    button.textContent = label;
+    button.addEventListener("click", () => onSelect(mode));
+    group.appendChild(button);
+  });
+  return group;
+}
+
+function syncActionGroup(group: HTMLElement, selected: RuleMode): void {
+  group.querySelectorAll<HTMLButtonElement>("button[data-value]").forEach((button) => {
+    button.dataset.selected = String(button.dataset.value === selected);
+    button.disabled = !currentContext?.siteEnabled;
   });
 }
 
-function isOkResponse(response: RuntimeResponse | undefined): response is { ok: true } {
-  return typeof response === "object" && response !== null && "ok" in response && response.ok === true;
+function renderContextSummary(context: PopupContext): string {
+  if (context.pageMode !== "inherit") return `当前页面整体使用${renderRuleMode(context.pageMode)}。`;
+  if (context.siteMode !== "inherit") return `当前站点整体使用${renderRuleMode(context.siteMode)}。`;
+  return "当前页面按基础分类和个性化例外处理。";
 }
 
-function showSaveNote(message: string): void {
-  if (!saveNote) {
-    return;
+function renderDecisionSummary(context: PopupContext, record: NavigationDebugRecord | null): string {
+  if (record) {
+    return `最近命中：${renderDecisionSource(record.resolvedBy)} · ${renderRuleMode(record.disposition)}`;
   }
+  const source = context.effectiveSource === "page"
+    ? "页面整体"
+    : context.effectiveSource === "site"
+      ? "站点整体"
+      : context.effectiveSource === "disabled"
+        ? "站点停用"
+        : "基础分类或个性化规则";
+  return `当前命中来源：${source}（尚无本页跳转记录）`;
+}
 
-  saveNote.hidden = false;
-  saveNote.textContent = message;
+function renderDecisionSource(source: NavigationDebugRecord["resolvedBy"]): string {
+  return ({
+    "personal-page": "页面个性化",
+    page: "页面整体",
+    "personal-site": "站点个性化",
+    site: "站点整体",
+    "site-category": "站点分类",
+    "global-category": "全局分类",
+    capability: "技术边界",
+    risk: "风险门禁",
+    disabled: "站点停用",
+    "native-fallback": "原生兜底",
+  } as const)[source];
+}
 
-  if (saveNoteTimeoutId !== undefined) {
-    window.clearTimeout(saveNoteTimeoutId);
-  }
+function renderRuleMode(mode: RuleMode): string {
+  if (mode === "inherit") return "继承";
+  return mode === "same-tab" ? "同标签" : mode === "new-tab" ? "新标签" : "保持原生";
+}
 
-  saveNoteTimeoutId = window.setTimeout(() => {
-    saveNote.hidden = true;
-  }, 2400);
+function showStatus(message: string, tone: "success" | "error"): void {
+  const element = byId("popup-status");
+  if (hideStatusTimer !== undefined) window.clearTimeout(hideStatusTimer);
+  element.hidden = false;
+  element.textContent = message;
+  element.title = message;
+  element.dataset.tone = tone;
+  // 状态带承担短时反馈，既保留可见错误提示，也不改变 Popup 的文档高度。
+  hideStatusTimer = window.setTimeout(() => {
+    element.hidden = true;
+    hideStatusTimer = undefined;
+  }, tone === "success" ? 1_800 : 4_000);
+}
+
+function getErrorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+
+async function send<T = RuntimeResponse>(message: Record<string, unknown>): Promise<T> {
+  const response = await chrome.runtime.sendMessage(message as RuntimeRequest) as RuntimeResponse;
+  if (typeof response === "object" && response !== null && "ok" in response && response.ok === false) throw new Error(response.error);
+  return response as T;
 }

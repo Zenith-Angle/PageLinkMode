@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PageLinkMode fixture index</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; max-width: 60rem; }
+    li { margin: 0.5rem 0; }
+    #result-log { border: 1px solid #777; min-height: 2rem; padding: 0.75rem 2rem; }
+  </style>
+</head>
+<body>
+  <h1>PageLinkMode browser fixtures</h1>
+  <nav aria-label="Fixture pages" data-testid="fixture-nav">
+    <ul>
+      <li><a data-testid="fixture-modern-spa" href="modern-spa.html">Modern SPA</a></li>
+      <li><a data-testid="fixture-legacy-table" href="legacy-table.html">Legacy table layout</a></li>
+      <li><a data-testid="fixture-legacy-frameset" href="legacy-frameset.html">Legacy frameset</a></li>
+      <li><a data-testid="fixture-base-target" href="base-target.html">Base target behavior</a></li>
+      <li><a data-testid="fixture-forms" href="forms.html">Forms</a></li>
+      <li><a data-testid="fixture-shadow-svg" href="shadow-svg.html">Shadow DOM and SVG</a></li>
+      <li><a data-testid="fixture-redirects" href="redirects.html">Scripted navigation and frames</a></li>
+    </ul>
+  </nav>
+  <h2>Result log</h2>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready</li></ol>
+  <script>
+    document.addEventListener("click", function (event) {
+      var link = event.target.closest && event.target.closest("a");
+      if (link) {
+        var item = document.createElement("li");
+        item.textContent = "click:" + link.dataset.testid;
+        document.getElementById("result-log").appendChild(item);
+      }
+    }, true);
+  </script>
+</body>
+</html>

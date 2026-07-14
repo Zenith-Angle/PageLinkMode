@@ -1,0 +1,43 @@
+<!doctype html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <title>Legacy table navigation fixture</title>
+</head>
+<body bgcolor="#ffffff" link="#0000cc" vlink="#551a8b">
+  <table width="760" border="1" cellspacing="0" cellpadding="6" align="center" data-testid="legacy-layout-table">
+    <tr><td colspan="2"><font size="5"><b>Legacy article archive</b></font></td></tr>
+    <tr>
+      <td width="160" valign="top">
+        <a data-testid="legacy-home-default-asp" href="legacy-table.html">Default.asp style home</a><br>
+        <a data-testid="legacy-home-index-shtml" href="index.html">index.shtml style home</a>
+      </td>
+      <td valign="top">
+        <p data-testid="legacy-content">Page one content</p>
+        <table width="100%" border="0" data-testid="legacy-pagination-table">
+          <tr><td align="center">
+            <a data-testid="legacy-page-start" href="legacy-table.html?start=20">Next 20</a> |
+            <a data-testid="legacy-page-offset" href="legacy-table.html?offset=40">Next 40</a> |
+            <a data-testid="legacy-page-static" href="list_2.htm">2</a> |
+            <a data-testid="legacy-forum-page" href="legacy-table.html?forum-2-1=1">Forum page</a>
+          </td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  <h2>Result log</h2>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready</li></ol>
+  <script type="text/javascript">
+    document.onclick = function (event) {
+      event = event || window.event;
+      var node = event.target || event.srcElement;
+      while (node && node.tagName !== "A") node = node.parentNode;
+      if (node) {
+        var item = document.createElement("li");
+        item.appendChild(document.createTextNode("click:" + node.getAttribute("data-testid")));
+        document.getElementById("result-log").appendChild(item);
+      }
+    };
+  </script>
+</body>
+</html>

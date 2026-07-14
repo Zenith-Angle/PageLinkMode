@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <base href="./" target="fixture-window">
+  <title>Base href and target fixture</title>
+  <style>#result-log { border: 1px solid #777; min-height: 2rem; padding: 0.75rem 2rem; }</style>
+</head>
+<body>
+  <h1>Base href and target behavior</h1>
+  <p><a data-testid="base-inherited-target" href="modern-spa.html?from=base">Inherited named target</a></p>
+  <p><a data-testid="base-explicit-self" href="legacy-table.html?from=base" target="_self">Explicit self target</a></p>
+  <p><a data-testid="base-explicit-blank" href="forms.html?from=base" target="_blank" rel="noopener">Explicit blank target</a></p>
+  <p><a data-testid="base-fragment" href="#local-section" target="_self">Same document fragment</a></p>
+  <h2 id="local-section">Local section</h2>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready</li></ol>
+  <script>
+    document.addEventListener("click", function (event) {
+      var link = event.target.closest && event.target.closest("a");
+      if (link) {
+        var item = document.createElement("li");
+        item.textContent = "click:" + link.dataset.testid + ":target=" + (link.target || document.querySelector("base").target);
+        document.getElementById("result-log").appendChild(item);
+      }
+    }, true);
+  </script>
+</body>
+</html>

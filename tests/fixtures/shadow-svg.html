@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shadow DOM and SVG links fixture</title>
+  <style>#result-log { border: 1px solid #777; min-height: 2rem; padding: 0.75rem 2rem; } svg { border: 1px solid #999; }</style>
+</head>
+<body>
+  <h1>Shadow DOM and SVG links</h1>
+  <section>
+    <h2>Open shadow root</h2>
+    <div id="shadow-host" data-testid="shadow-host"></div>
+  </section>
+  <section>
+    <h2>SVG anchor</h2>
+    <svg data-testid="svg-root" width="260" height="70" viewBox="0 0 260 70" xmlns="http://www.w3.org/2000/svg">
+      <a data-testid="svg-link" href="modern-spa.html?from=svg">
+        <rect x="10" y="10" width="240" height="50" fill="#d9e8ff"></rect>
+        <text x="25" y="42" fill="#111">Open SVG destination</text>
+      </a>
+    </svg>
+  </section>
+  <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready</li></ol>
+  <script>
+    (function () {
+      var host = document.getElementById("shadow-host");
+      var root = host.attachShadow({ mode: "open" });
+      var link = document.createElement("a");
+      link.href = "legacy-table.html?from=shadow";
+      link.dataset.testid = "shadow-link";
+      link.textContent = "Open shadow anchor";
+      root.appendChild(link);
+
+      document.addEventListener("click", function (event) {
+        var path = event.composedPath();
+        var clicked = path.find(function (node) { return node && node.dataset && node.dataset.testid; });
+        if (clicked) {
+          var item = document.createElement("li");
+          item.textContent = "click:" + clicked.dataset.testid;
+          document.getElementById("result-log").appendChild(item);
+        }
+      }, true);
+    }());
+  </script>
+</body>
+</html>

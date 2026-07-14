@@ -1,11 +1,15 @@
 import type { NavigationDisposition } from "../lib/types";
 import { hasPointerModifier, isPageHandledNavigationEvent } from "./dom";
 
+export { shouldInterceptNavigation } from "../lib/navigation";
+
 type AnchorHandledMouseEvent = MouseEvent & {
   __PAGELINKMODE_ANCHOR_NAVIGATION_HANDLED__?: true;
+  __PAGELINKMODE_ANCHOR_NAVIGATION_OBSERVED__?: true;
 };
 
 const ANCHOR_NAVIGATION_HANDLED_FLAG = "__PAGELINKMODE_ANCHOR_NAVIGATION_HANDLED__";
+const ANCHOR_NAVIGATION_OBSERVED_FLAG = "__PAGELINKMODE_ANCHOR_NAVIGATION_OBSERVED__";
 
 export function shouldSkipAnchorNavigationEvent(
   event: MouseEvent,
@@ -13,8 +17,10 @@ export function shouldSkipAnchorNavigationEvent(
 ): boolean {
   return (
     !hasActiveContext ||
+    event.isTrusted === false ||
     hasPointerModifier(event) ||
     isPageHandledNavigationEvent(event) ||
+    isAnchorNavigationAlreadyObserved(event) ||
     isAnchorNavigationAlreadyHandled(event)
   );
 }
@@ -33,6 +39,7 @@ export function takeOverAnchorNavigation(event: MouseEvent): void {
   // 这样即使同一个事件对象因为浏览器实现差异再次被后续逻辑看见，
   // 也能明确识别为“已处理”，避免重复发消息或重复记调试日志。
   mutableEvent[ANCHOR_NAVIGATION_HANDLED_FLAG] = true;
+  mutableEvent[ANCHOR_NAVIGATION_OBSERVED_FLAG] = true;
 
   // 这里不仅要阻止浏览器默认跳转，还要阻止页面后续 click 监听里的脚本导航，
   // 否则会出现扩展已经开了新标签，但当前页仍被站点脚本带走的“双跳转”问题。
@@ -44,4 +51,14 @@ export function takeOverAnchorNavigation(event: MouseEvent): void {
 export function isAnchorNavigationAlreadyHandled(event: MouseEvent): boolean {
   const mutableEvent = event as AnchorHandledMouseEvent;
   return mutableEvent[ANCHOR_NAVIGATION_HANDLED_FLAG] === true;
+}
+
+export function markAnchorNavigationObserved(event: MouseEvent): void {
+  const mutableEvent = event as AnchorHandledMouseEvent;
+  mutableEvent[ANCHOR_NAVIGATION_OBSERVED_FLAG] = true;
+}
+
+export function isAnchorNavigationAlreadyObserved(event: MouseEvent): boolean {
+  const mutableEvent = event as AnchorHandledMouseEvent;
+  return mutableEvent[ANCHOR_NAVIGATION_OBSERVED_FLAG] === true;
 }

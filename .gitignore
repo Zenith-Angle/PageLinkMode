@@ -1,3 +1,7 @@
 dist/
 dist.zip
 node_modules/
+.test-dist/
+output/playwright/
+playwright-report/
+test-results/

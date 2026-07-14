@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>PageLinkMode E2E navigation</title></head>
+<body>
+  <h1>Navigation matrix</h1>
+  <p><a data-testid="plain-link" href="destination.html">Open destination</a></p>
+  <p><a data-testid="cross-origin-link" href="http://127.0.0.1:4174/destination.html">Open other origin</a></p>
+  <p><a data-testid="named-link" href="destination.html" target="fixture-window">Open named window</a></p>
+  <p><a data-testid="download-link" href="download.txt" download>Download fixture</a></p>
+  <form data-testid="search-form" method="get" action="destination.html">
+    <input name="q" value="fixture"><button type="submit">Search</button>
+  </form>
+  <form data-testid="login-form" method="get" action="login.html">
+    <input name="user" value="fixture"><button type="submit">Login</button>
+  </form>
+  <button data-testid="open-self" type="button">window.open self</button>
+  <button data-testid="open-popup" type="button">window.open popup</button>
+  <script>
+    document.querySelector('[data-testid="open-self"]').addEventListener('click', function () {
+      window.open('destination.html?from=open', '_self');
+    });
+    document.querySelector('[data-testid="open-popup"]').addEventListener('click', function () {
+      window.open('destination.html?from=popup', 'fixture-popup', 'popup,width=480,height=360');
+    });
+  </script>
+</body>
+</html>

@@ -1,103 +1,75 @@
-import {
-  classifyWindowOpen,
-  resolveNavigationDecision,
-} from "../lib/navigation";
-import type {
-  BridgeWindowOpenMessage,
-  PageBridgeConfig,
-} from "../lib/types";
+import { classifyWindowOpen, resolveNavigationDecision } from "../lib/navigation";
+import type { BridgeWindowOpenMessage, NavigationDecision, PageBridgeConfig } from "../lib/types";
 
 (() => {
-  const config = readBridgeConfig();
-  if (config === null) {
-    return;
-  }
-
   const originalOpen = window.open.bind(window);
   const patchedFlag = "__pagelinkmode_open_patched__";
+  let config: PageBridgeConfig | null = null;
 
-  if ((window as typeof window & Record<string, boolean>)[patchedFlag]) {
-    return;
-  }
-
+  if ((window as typeof window & Record<string, boolean>)[patchedFlag]) return;
   (window as typeof window & Record<string, boolean>)[patchedFlag] = true;
 
-  window.open = function patchedWindowOpen(
-    url?: string | URL,
-    target?: string,
-    features?: string,
-  ): Window | null {
-    if (!url) {
-      return originalOpen(url, target, features);
+  window.addEventListener("message", (event: MessageEvent<BridgeConfigMessage>) => {
+    if (event.source === window && event.data?.source === "pagelinkmode-content" && event.data.type === "bridge-config") {
+      config = event.data.config;
     }
+  });
 
+  window.open = function patchedWindowOpen(url?: string | URL, target?: string, features?: string): Window | null {
+    if (!url || !config) return originalOpen(url, target, features);
     const resolvedUrl = resolveTargetUrl(url);
-    if (!resolvedUrl || !/^https?:$/.test(resolvedUrl.protocol)) {
-      return originalOpen(url, target, features);
-    }
+    if (!resolvedUrl) return originalOpen(url, target, features);
 
-    const decision = resolveNavigationDecision(
-      classifyWindowOpen(resolvedUrl, target, features),
-      config,
-    );
-    console.debug("[PageLinkMode] window.open", {
-      url: resolvedUrl.toString(),
-      target,
-      features,
-      category: decision.category,
-      disposition: decision.disposition,
-      resolvedBy: decision.resolvedBy,
-      reason: decision.reason,
+    const userActive = navigator.userActivation?.isActive === true;
+    const facts = classifyWindowOpen(resolvedUrl, target, features, config.pageUrl, {
+      userIntent: userActive ? "script-active" : "script-passive",
     });
-    postWindowOpenDecision(resolvedUrl.toString(), decision);
+    const decision = resolveNavigationDecision(facts, config);
 
-    if (decision.disposition === "preserve-native") {
-      return originalOpen(url, target, features);
+    if (!decision.applied) {
+      const result = originalOpen(url, target, features);
+      postWindowOpenDecision(facts, decision, config.bridgeToken);
+      return result;
     }
 
     if (decision.disposition === "same-tab") {
+      postWindowOpenDecision(facts, decision, config.bridgeToken);
       window.location.assign(resolvedUrl.toString());
       return window;
     }
 
-    return null;
+    const opened = originalOpen(resolvedUrl.toString(), "_blank", features);
+    const actualDecision: NavigationDecision = opened === null
+      ? { ...decision, applied: false, disposition: decision.nativeDisposition, bypassReason: "popup-blocked" }
+      : decision;
+    postWindowOpenDecision(facts, actualDecision, config.bridgeToken);
+    return opened;
   };
 })();
 
-function readBridgeConfig(): PageBridgeConfig | null {
-  const currentScript = document.currentScript as HTMLScriptElement | null;
-  const rawConfig = currentScript?.dataset.config;
-  if (!rawConfig) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(rawConfig) as PageBridgeConfig;
-  } catch {
-    return null;
-  }
+interface BridgeConfigMessage {
+  source: "pagelinkmode-content";
+  type: "bridge-config";
+  config: PageBridgeConfig;
 }
 
 function postWindowOpenDecision(
-  url: string,
-  decision: ReturnType<typeof resolveNavigationDecision>,
+  facts: ReturnType<typeof classifyWindowOpen>,
+  decision: NavigationDecision,
+  bridgeToken: string,
 ): void {
   const message: BridgeWindowOpenMessage = {
     source: "pagelinkmode-bridge",
     type: "window-open",
-    url,
-    category: decision.category,
-    disposition: decision.disposition,
-    resolvedBy: decision.resolvedBy,
-    reason: decision.reason,
+    bridgeToken,
+    facts,
+    decision,
   };
-  window.postMessage(message, window.location.origin);
+  window.postMessage(message, getPostMessageTargetOrigin());
 }
 
 function resolveTargetUrl(url: string | URL): URL | null {
-  try {
-    return new URL(url.toString(), window.location.href);
-  } catch {
-    return null;
-  }
+  try { return new URL(url.toString(), window.location.href); } catch { return null; }
 }
+
+function getPostMessageTargetOrigin(): string { return window.location.origin === "null" ? "*" : window.location.origin; }

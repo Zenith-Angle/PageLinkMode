@@ -6,9 +6,18 @@ import esbuild from "esbuild";
 const rootDir = process.cwd();
 const tempDir = resolve(rootDir, ".test-dist");
 const testEntries = [
+  "src/background/badge.test.ts",
   "src/content/anchor-events.test.ts",
+  "src/content/dom.test.ts",
+  "src/content/forms.test.ts",
+  "src/manifest.test.ts",
   "src/lib/navigation.test.ts",
+  "src/lib/navigable-link.test.ts",
+  "src/lib/popup-context.test.ts",
+  "src/lib/runtime-messaging.test.ts",
+  "src/lib/scope-control.test.ts",
   "src/lib/storage.test.ts",
+  "src/lib/takeover-scope.test.ts",
 ];
 
 async function bundleTests() {

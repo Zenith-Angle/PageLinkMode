@@ -1,0 +1,14 @@
+<!doctype html PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd">
+<html>
+<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>Legacy frameset fixture</title></head>
+<frameset cols="220,*" data-testid="legacy-frameset">
+  <frame src="frame-nav.html" name="navigation" title="Navigation" data-testid="legacy-nav-frame">
+  <frame src="frame-content.html" name="content" title="Content" data-testid="legacy-content-frame">
+  <noframes>
+    <body>
+      <p>Frames are required for this fixture.</p>
+      <ol id="result-log" data-testid="result-log"><li data-testid="initial-state">ready:no-frames</li></ol>
+    </body>
+  </noframes>
+</frameset>
+</html>

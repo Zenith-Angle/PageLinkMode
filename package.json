@@ -1,18 +1,29 @@
 {
   "name": "pagelinkmode",
-  "version": "0.4.1",
+  "version": "0.6.1",
   "private": true,
   "description": "Chrome MV3 扩展：按跳转分类接管网页内导航，支持全局、站点和单页规则。",
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/run-tests.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "test:e2e": "npm run build && playwright test",
+    "verify": "npm run typecheck && npm test && npm run test:e2e",
+    "verify:source": "node scripts/verify-dist-zip.mjs --source-only",
+    "verify:artifacts": "node scripts/verify-dist-zip.mjs",
+    "package:dist": "node scripts/package-dist.mjs",
+    "verify:dist-zip": "node scripts/verify-dist-zip.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/chrome": "^0.1.24",
     "@types/node": "^24.6.0",
     "esbuild": "^0.25.5",
     "typescript": "^5.9.3",
     "vite": "^7.1.12"
+  },
+  "dependencies": {
+    "re2js": "^2.8.6",
+    "tldts": "^7.4.8"
   }
 }
