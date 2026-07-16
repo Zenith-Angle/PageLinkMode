@@ -7,6 +7,10 @@
   <p><a data-testid="cross-origin-link" href="http://127.0.0.1:4174/destination.html">Open other origin</a></p>
   <p><a data-testid="named-link" href="destination.html" target="fixture-window">Open named window</a></p>
   <p><a data-testid="download-link" href="download.txt" download>Download fixture</a></p>
+  <p>
+    <a data-testid="favorite-action" href="destination.html?from=favorite" role="button" aria-pressed="false">收藏</a>
+    <span data-testid="favorite-state">未收藏</span>
+  </p>
   <form data-testid="search-form" method="get" action="destination.html">
     <input name="q" value="fixture"><button type="submit">Search</button>
   </form>
@@ -21,6 +25,11 @@
     });
     document.querySelector('[data-testid="open-popup"]').addEventListener('click', function () {
       window.open('destination.html?from=popup', 'fixture-popup', 'popup,width=480,height=360');
+    });
+    document.querySelector('[data-testid="favorite-action"]').addEventListener('click', function (event) {
+      event.preventDefault();
+      event.currentTarget.setAttribute('aria-pressed', 'true');
+      document.querySelector('[data-testid="favorite-state"]').textContent = '已收藏';
     });
   </script>
 </body>

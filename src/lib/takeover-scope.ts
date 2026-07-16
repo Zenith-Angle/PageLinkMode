@@ -7,13 +7,13 @@ export interface TakeoverScopeDefinition {
   shortDescription: string;
 }
 
-export const DEFAULT_TAKEOVER_SCOPE_LEVEL: TakeoverScopeLevel = 4;
+export const DEFAULT_TAKEOVER_SCOPE_LEVEL: TakeoverScopeLevel = 2;
 export const TAKEOVER_SCOPE_LEVELS: TakeoverScopeDefinition[] = [
   { level: 0, label: "精准", shortDescription: "仅普通同源内容" },
-  { level: 1, label: "内容", shortDescription: "加入同站、跨站和内容导航" },
-  { level: 2, label: "广泛", shortDescription: "加入常见页面语义" },
-  { level: 3, label: "深入", shortDescription: "加入标准表单" },
-  { level: 4, label: "最广", shortDescription: "加入脚本打开" },
+  { level: 1, label: "内容", shortDescription: "加入常用内容入口" },
+  { level: 2, label: "适中", shortDescription: "覆盖多数日常浏览" },
+  { level: 3, label: "深入", shortDescription: "加入筛选、相册和 GET 表单" },
+  { level: 4, label: "最广", shortDescription: "加入翻页和脚本打开" },
 ];
 
 export function isTakeoverScopeLevel(value: unknown): value is TakeoverScopeLevel {
@@ -26,9 +26,9 @@ export function getTakeoverScopeDefinition(level: TakeoverScopeLevel): TakeoverS
 
 export function getMinimumTakeoverScopeLevel(category: NavigationCategory): TakeoverScopeLevel {
   if (category === "link-same-origin") return 0;
-  if (category === "link-same-site" || category === "link-cross-site" || category === "link-site-root" || category === "link-primary-navigation" || category === "link-list-detail" || category === "link-document" || category === "link-media") return 1;
-  if (category.startsWith("link-")) return 2;
-  if (category.startsWith("form-")) return 3;
+  if (category === "link-same-site" || category === "link-cross-site" || category === "link-list-detail" || category === "link-document" || category === "link-media") return 1;
+  if (category === "link-site-root" || category === "link-primary-navigation" || category === "link-breadcrumb-tab") return 2;
+  if (category === "link-search-filter" || category === "link-image-gallery" || category === "link-spa-route" || category === "form-search-get" || category === "form-general-get") return 3;
   return 4;
 }
 

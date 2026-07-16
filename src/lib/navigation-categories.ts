@@ -78,9 +78,6 @@ export function createPresetCategoryRules(preset: Exclude<BasicPresetId, "custom
   const content = withActions(precise, {
     "link-same-site": "new-tab",
     "link-cross-site": "new-tab",
-    "link-site-root": "same-tab",
-    "link-primary-navigation": "same-tab",
-    "link-breadcrumb-tab": "same-tab",
     "link-list-detail": "new-tab",
     "link-document": "new-tab",
     "link-media": "new-tab",
@@ -90,15 +87,18 @@ export function createPresetCategoryRules(preset: Exclude<BasicPresetId, "custom
   }
 
   const broad = withActions(content, {
-    "link-pagination": "same-tab",
-    "link-content-sequence": "same-tab",
-    "link-search-filter": "same-tab",
+    "link-site-root": "same-tab",
+    "link-primary-navigation": "same-tab",
+    "link-breadcrumb-tab": "same-tab",
   });
   if (preset === "broad") {
     return broad;
   }
 
   const deep = withActions(broad, {
+    "link-search-filter": "same-tab",
+    "link-image-gallery": "new-tab",
+    "link-spa-route": "same-tab",
     "form-search-get": "same-tab",
     "form-general-get": "same-tab",
   });
@@ -107,15 +107,19 @@ export function createPresetCategoryRules(preset: Exclude<BasicPresetId, "custom
   }
 
   return withActions(deep, {
+    // 翻页和顺序阅读会显著改变网站原生浏览节奏，只在最高档打开新标签。
+    "link-pagination": "new-tab",
+    "link-content-sequence": "new-tab",
     "open-same-origin": "new-tab",
     "open-same-site": "new-tab",
     "open-cross-site": "new-tab",
+    "open-image-gallery": "new-tab",
     "open-document-media": "new-tab",
   });
 }
 
-export const DEFAULT_PRESET_ID: BasicPresetId = "content";
-export const DEFAULT_GLOBAL_CATEGORY_RULES = createPresetCategoryRules("content");
+export const DEFAULT_PRESET_ID: BasicPresetId = "broad";
+export const DEFAULT_GLOBAL_CATEGORY_RULES = createPresetCategoryRules("broad");
 
 export function createDefaultGlobalCategoryRules(): CategoryRuleMap {
   return { ...DEFAULT_GLOBAL_CATEGORY_RULES };

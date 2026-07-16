@@ -31,6 +31,7 @@ import {
   isLikelySearchFilterNavigation,
   isLikelySearchForm,
   isLikelySpaRoute,
+  getFrontendActionControlSignal,
 } from "./navigation-heuristics";
 import { isHardNativeCategory } from "./navigation-categories";
 import { findMatchingPersonalRule } from "./personal-rules";
@@ -88,6 +89,7 @@ export function classifyAnchorNavigation(
   const nativeTarget = classifyNativeTarget(rawTarget, "self");
   const semantics = classifyAnchorSemantics(anchor, sourceUrl, targetUrl);
   const evidence = semantics.map((semantic) => `semantic:${semantic}`);
+  const frontendActionReason = getFrontendActionControlSignal(anchor, targetUrl);
   const attributes = collectElementAttributes(anchor);
   const userIntent = options.userIntent ?? "plain";
   const protocol = parseUrl(targetUrl)?.protocol ?? "";
@@ -101,6 +103,7 @@ export function classifyAnchorNavigation(
     nativeTarget,
     userIntent,
     elementAttributes: attributes,
+    frontendActionReason,
   });
 
   return {
@@ -116,7 +119,12 @@ export function classifyAnchorNavigation(
     userIntent,
     elementTag: getElementTag(anchor, "a"),
     elementAttributes: attributes,
-    evidence: [...evidence, `relation:${relation}`, ...capability.blockers.map((item) => `blocker:${item}`)],
+    evidence: [
+      ...evidence,
+      ...(frontendActionReason ? [`frontend-action:${frontendActionReason}`] : []),
+      `relation:${relation}`,
+      ...capability.blockers.map((item) => `blocker:${item}`),
+    ],
     capability,
   };
 }
@@ -503,6 +511,7 @@ function buildCapability(input: {
   userIntent: NavigationUserIntent;
   formMethod?: string;
   elementAttributes?: Record<string, string>;
+  frontendActionReason?: string | null;
 }): NavigationCapability {
   const blockers: string[] = [];
   const hardBlock = (reason: string) => {
@@ -516,6 +525,10 @@ function buildCapability(input: {
     !input.semantics.includes("spa-route")
   ) {
     hardBlock("same-document-navigation");
+  }
+  // 明确的网页动作控件必须交给页面自己的 handler，避免捕获阶段先于收藏/点赞等状态更新而接管链接。
+  if (input.trigger === "anchor" && input.frontendActionReason) {
+    hardBlock("frontend-action-control");
   }
   if (input.userIntent === "modified" || input.userIntent === "middle") hardBlock("explicit-user-intent");
   if (input.userIntent === "script-passive") hardBlock("script-without-user-activation");

@@ -19,18 +19,22 @@ import { normalizePageUrl } from "./lib/url";
 
 const PRESETS: Array<{ id: Exclude<BasicPresetId, "custom">; label: string; description: string }> = [
   { id: "precise", label: "精准", description: "仅普通同源内容" },
-  { id: "content", label: "内容", description: "内容优先，交互原生" },
-  { id: "broad", label: "广泛", description: "加入常见导航" },
-  { id: "deep", label: "深入", description: "加入 GET 表单" },
-  { id: "widest", label: "最广", description: "加入脚本打开" },
+  { id: "content", label: "内容", description: "加入常用内容入口" },
+  { id: "broad", label: "适中", description: "覆盖多数日常浏览（推荐）" },
+  { id: "deep", label: "深入", description: "加入筛选、相册和 GET 表单" },
+  { id: "widest", label: "最广", description: "加入翻页和脚本打开" },
 ];
 const PRESET_BY_LEVEL = PRESETS.map((preset) => preset.id);
 
 let activeTab: chrome.tabs.Tab | null = null;
 let currentContext: PopupContext | null = null;
 let latestDecision: NavigationDebugRecord | null = null;
-let currentPresetId: BasicPresetId = "content";
-let selectedPreset: Exclude<BasicPresetId, "custom"> = "content";
+let currentPresetId: BasicPresetId = "broad";
+let selectedPreset: Exclude<BasicPresetId, "custom"> = "broad";
+let lastSuccessfulPreset: Exclude<BasicPresetId, "custom"> = "broad";
+let pendingPreset: Exclude<BasicPresetId, "custom"> | null = null;
+let presetApplyInFlight = false;
+let presetApplySequence = 0;
 let cancelPresetRangeRecovery: (() => void) | null = null;
 let hideStatusTimer: number | undefined;
 
@@ -61,12 +65,9 @@ function bindActions(): void {
     const preset = readPresetRangeValue(presetRange);
     if (preset) {
       selectedPreset = preset;
+      queuePresetApplication(preset);
       renderPresetControl(preset);
     }
-  });
-  presetRange.addEventListener("change", () => {
-    const preset = readPresetRangeValue(presetRange);
-    if (preset) void openPresetPreview(preset);
   });
   byId("site-rule-actions").replaceWith(createActionGroup("site-rule-actions", (mode) => void setSiteRule(mode)));
   byId("page-rule-actions").replaceWith(createActionGroup("page-rule-actions", (mode) => void setPageRule(mode)));
@@ -83,7 +84,8 @@ async function initialize(): Promise<void> {
       send<ExtensionState>({ type: "plm:get-state" }),
     ]);
     currentPresetId = state.presetId;
-    selectedPreset = currentPresetId === "custom" ? "content" : currentPresetId;
+    selectedPreset = currentPresetId === "custom" ? "broad" : currentPresetId;
+    lastSuccessfulPreset = selectedPreset;
     currentContext = context;
     latestDecision = records.find((record) => normalizePageUrl(record.pageUrl) === context.pageKey) ?? null;
     renderContext(currentContext);
@@ -178,12 +180,66 @@ async function openPersonalRules(scope: "site" | "page"): Promise<void> {
   window.close();
 }
 
-async function openPresetPreview(preset: Exclude<BasicPresetId, "custom">): Promise<void> {
-  const url = new URL(chrome.runtime.getURL("src/options.html"));
-  url.searchParams.set("view", "basic");
-  url.searchParams.set("preset", preset);
-  await chrome.tabs.create({ url: url.toString() });
-  window.close();
+function queuePresetApplication(preset: Exclude<BasicPresetId, "custom">): void {
+  pendingPreset = preset;
+  presetApplySequence += 1;
+  if (!presetApplyInFlight) void drainPresetApplications();
+}
+
+async function drainPresetApplications(): Promise<void> {
+  if (presetApplyInFlight) return;
+  presetApplyInFlight = true;
+  try {
+    while (pendingPreset) {
+      const preset = pendingPreset;
+      pendingPreset = null;
+      const sequence = presetApplySequence;
+      try {
+        const state = await send<ExtensionState>({ type: "plm:apply-preset", presetId: preset });
+        lastSuccessfulPreset = preset;
+
+        // 拖动期间可能已经产生了更新的请求；旧响应只保留为可回退档，不再覆盖当前 UI。
+        if (sequence !== presetApplySequence) continue;
+        currentPresetId = state.presetId;
+        selectedPreset = state.presetId === "custom" ? preset : state.presetId;
+        const refreshError = await refreshAfterPresetApply(sequence, preset);
+        if (sequence !== presetApplySequence) continue;
+        showStatus(refreshError ? `预设已保存，刷新失败：${refreshError}` : "预设已应用。", refreshError ? "error" : "success");
+      } catch (error) {
+        if (sequence !== presetApplySequence) continue;
+        pendingPreset = null;
+        currentPresetId = lastSuccessfulPreset;
+        selectedPreset = lastSuccessfulPreset;
+        renderPresetControl(lastSuccessfulPreset);
+        beginPresetRangeRecovery(lastSuccessfulPreset);
+        showStatus(`预设应用失败：${getErrorMessage(error)}。已回退到${PRESETS.find((item) => item.id === lastSuccessfulPreset)!.label}。`, "error");
+      }
+    }
+  } finally {
+    presetApplyInFlight = false;
+    if (pendingPreset) void drainPresetApplications();
+  }
+}
+
+async function refreshAfterPresetApply(
+  sequence: number,
+  preset: Exclude<BasicPresetId, "custom">,
+): Promise<string | null> {
+  if (!currentContext) {
+    renderPresetControl(preset);
+    return null;
+  }
+  try {
+    const context = await send<PopupContext>({ type: "plm:get-popup-context", url: currentContext.url });
+    if (sequence !== presetApplySequence) return null;
+    currentContext = context;
+    renderContext(currentContext);
+    return null;
+  } catch (error) {
+    // 写入已经成功时不回滚配置；保留已应用档位并把刷新异常反馈给用户。
+    if (sequence === presetApplySequence) renderPresetControl(preset);
+    return getErrorMessage(error);
+  }
 }
 
 function renderPresetControl(preset: Exclude<BasicPresetId, "custom">): void {
@@ -191,8 +247,9 @@ function renderPresetControl(preset: Exclude<BasicPresetId, "custom">): void {
   const level = PRESET_BY_LEVEL.indexOf(preset) as TakeoverScopeLevel;
   const range = byId<HTMLInputElement>("popup-preset-range");
   syncTakeoverScopeRange(range, level);
-  range.setAttribute("aria-valuetext", `${definition.label}：${definition.description}，待确认应用`);
   const isCurrent = currentPresetId !== "custom" && currentPresetId === preset;
+  const stateLabel = isCurrent ? "当前已应用" : presetApplyInFlight ? "正在应用" : "自定义配置";
+  range.setAttribute("aria-valuetext", `${definition.label}：${definition.description}，${stateLabel}`);
   byId<HTMLOutputElement>("popup-preset-label").value = isCurrent
     ? `当前：${definition.label}`
     : currentPresetId === "custom"

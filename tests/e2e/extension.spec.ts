@@ -503,7 +503,8 @@ test("真实工具栏 Popup 在滑块和规则交互后始终保持相同布局"
     })()`);
     await expect.poll(() => popup.evaluate<string>(
       "document.querySelector('#popup-preset-label')?.textContent ?? ''",
-    )).toBe("待选：最广");
+    )).toBe("当前：最广");
+    await expect.poll(async () => (await send<{ presetId: string }>(control, { type: "plm:get-state" })).presetId).toBe("widest");
     expect(await expectStableActionPopupLayout(popup)).toEqual(initialDimensions);
 
     await popup.evaluate(`(() => {
@@ -570,8 +571,8 @@ test("Options 提供完整基础分类、预设和个性化规则工作流", asy
   });
   await page.reload();
   await expect(page.locator("#active-preset")).toHaveText("当前：自定义");
-  await expect(page.locator("#preset-selection-label")).toHaveText("待选：内容");
-  await expect(presetRange).toHaveValue("1");
+  await expect(page.locator("#preset-selection-label")).toHaveText("待选：适中");
+  await expect(presetRange).toHaveValue("2");
 
   await page.getByRole("button", { name: "站点覆写" }).click();
   await page.locator("#add-site-hostname").fill("127.0.0.1");
@@ -659,6 +660,12 @@ test("基础内容链接默认新标签，页面个性化规则可恢复原生",
   const source = await context.newPage();
   await source.goto(`${FIXTURE}/e2e-navigation.html`);
 
+  const pageCountBeforeFavorite = context.pages().length;
+  await source.getByTestId("favorite-action").click();
+  await expect(source.getByTestId("favorite-state")).toHaveText("已收藏");
+  await expect(source).toHaveURL(`${FIXTURE}/e2e-navigation.html`);
+  expect(context.pages()).toHaveLength(pageCountBeforeFavorite);
+
   const opened = context.waitForEvent("page");
   await source.getByTestId("plain-link").click();
   const destination = await opened;
@@ -693,6 +700,7 @@ test("基础内容链接默认新标签，页面个性化规则可恢复原生",
 
   const records = await control.evaluate(async () => chrome.runtime.sendMessage({ type: "plm:get-debug-records" }));
   expect(records.some((record: { winningRuleId?: string; applied: boolean }) => record.winningRuleId === "e2e-native-rule" && !record.applied)).toBe(true);
+  expect(records.some((record: { bypassReason?: string; applied: boolean }) => record.bypassReason === "frontend-action-control" && !record.applied)).toBe(true);
 });
 
 test("敏感表单与特殊窗口默认原生，最广预设只接管普通脚本打开", async ({ context, extensionId }) => {
@@ -752,7 +760,7 @@ test("开放 Shadow DOM、SVG、iframe 和 frameset 中的链接进入真实接�
   await expect(framePage).toHaveURL(/modern-spa\.html\?from=frame/);
 });
 
-test("Popup 显示当前命中来源并提供预设、站点和页面独立深链", async ({ context, extensionId }, testInfo) => {
+test("Popup 显示当前命中来源并实时应用预设，提供站点和页面独立深链", async ({ context, extensionId }, testInfo) => {
   const control = await context.newPage();
   await control.goto(`chrome-extension://${extensionId}/src/options.html`);
   const sourceUrl = `${FIXTURE}/e2e-navigation.html`;
@@ -837,18 +845,16 @@ test("Popup 显示当前命中来源并提供预设、站点和页面独立深�
     await chrome.tabs.update(tab.id, { active: true });
   }, sourceUrl);
   await presetPopup.goto(`chrome-extension://${extensionId}/src/popup.html`);
-  const presetOptionsPromise = context.waitForEvent("page", {
-    predicate: (page) => page.url().includes(`chrome-extension://${extensionId}/src/options.html`) && page !== siteOptions && page !== pageOptions,
-  });
+  const optionsPageCountBeforePreset = context.pages().filter((page) => page.url().includes(`chrome-extension://${extensionId}/src/options.html`)).length;
   const popupPresetRange = presetPopup.locator("#popup-preset-range");
   await popupPresetRange.focus();
+  await popupPresetRange.press("Home");
   await popupPresetRange.press("End");
-  const presetOptions = await presetOptionsPromise;
-  const presetDeepLink = new URL(presetOptions.url());
-  expect(presetDeepLink.searchParams.get("view")).toBe("basic");
-  expect(presetDeepLink.searchParams.get("preset")).toBe("widest");
-  await expect(presetOptions.getByRole("dialog", { name: "应用基础预设" })).toBeVisible();
+  await expect.poll(async () => (await send<{ presetId: string }>(control, { type: "plm:get-state" })).presetId).toBe("widest");
+  await expect(presetPopup.locator("#popup-preset-label")).toHaveText("当前：最广");
+  await expect.poll(() => context.pages().filter((page) => page.url().includes(`chrome-extension://${extensionId}/src/options.html`)).length).toBe(optionsPageCountBeforePreset);
   expect(consoleErrors).toEqual([]);
+  await presetPopup.close();
 });
 
 test("调试记录可运行模拟并预填页面个性化规则", async ({ context, extensionId }) => {

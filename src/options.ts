@@ -40,10 +40,10 @@ type WorkspaceView = "basic" | "sites" | "personal" | "debug" | "pages" | "backu
 
 const PRESETS: Array<{ id: Exclude<BasicPresetId, "custom">; label: string; description: string }> = [
   { id: "precise", label: "精准", description: "仅普通同源内容" },
-  { id: "content", label: "内容", description: "内容优先，交互原生" },
-  { id: "broad", label: "广泛", description: "加入常见导航" },
-  { id: "deep", label: "深入", description: "加入 GET 表单" },
-  { id: "widest", label: "最广", description: "加入脚本打开" },
+  { id: "content", label: "内容", description: "加入常用内容入口" },
+  { id: "broad", label: "适中", description: "覆盖多数日常浏览（推荐）" },
+  { id: "deep", label: "深入", description: "加入筛选、相册和 GET 表单" },
+  { id: "widest", label: "最广", description: "加入翻页和脚本打开" },
 ];
 
 const GROUPS: Array<{ id: NavigationCategoryGroup; label: string }> = [
@@ -98,7 +98,7 @@ const DECISION_CHAIN: Array<{ source: NavigationDecision["resolvedBy"]; label: s
 ];
 
 const PRESET_LABELS: Record<BasicPresetId, string> = {
-  precise: "精准", content: "内容", broad: "广泛", deep: "深入", widest: "最广", custom: "自定义",
+  precise: "精准", content: "内容", broad: "适中", deep: "深入", widest: "最广", custom: "自定义",
 };
 
 const PRESET_BY_LEVEL: Array<Exclude<BasicPresetId, "custom">> = [
@@ -232,7 +232,7 @@ function renderAll(): void {
   byId("personal-count").textContent = String(currentState.personalRules.length);
   byId("active-preset").textContent = `当前：${PRESET_LABELS[currentState.presetId]}`;
   if (!selectedPreset) {
-    selectedPreset = currentState.presetId === "custom" ? "content" : currentState.presetId;
+    selectedPreset = currentState.presetId === "custom" ? "broad" : currentState.presetId;
   }
   renderPresetControl(selectedPreset);
   renderPresets();

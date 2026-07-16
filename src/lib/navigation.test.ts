@@ -188,6 +188,71 @@ test("链接语义覆盖首页、分页、文档、媒体和跨站普通内容",
   }
 });
 
+test("明确的前端动作控件在捕获阶段保持原生并留下可解释证据", () => {
+  const sourceUrl = "https://example.com/article/1";
+  const cases: Array<{ element: MockElement; signal: string }> = [
+    {
+      element: new MockElement({ href: "https://example.com/article/2", attributes: { role: "button" } }),
+      signal: "role=button",
+    },
+    {
+      element: new MockElement({ href: "https://example.com/article/2", attributes: { "aria-pressed": "false" } }),
+      signal: "aria-pressed",
+    },
+    {
+      element: new MockElement({ href: "https://example.com/article/2", attributes: { "data-action": "favorite" } }),
+      signal: "attribute:data-action",
+    },
+    {
+      element: new MockElement({ href: "https://example.com/article/2", textContent: "收藏" }),
+      signal: "text:收藏",
+    },
+    {
+      element: new MockElement({ href: "https://example.com/article/2", attributes: { "aria-label": "收藏本文" } }),
+      signal: "label:收藏",
+    },
+  ];
+
+  for (const { element, signal } of cases) {
+    const facts = classifyAnchorNavigation(element as unknown as HTMLAnchorElement, sourceUrl);
+    const decision = resolveNavigationDecision(facts, createContext({ pageMode: "new-tab" }));
+
+    assert.equal(decision.requestedDisposition, "preserve-native", signal);
+    assert.equal(decision.applied, false, signal);
+    assert.equal(decision.resolvedBy, "capability", signal);
+    assert.ok(facts.capability.blockers.includes("frontend-action-control"), signal);
+    assert.ok(facts.evidence.includes(`frontend-action:${signal}`), signal);
+    assert.ok(facts.evidence.includes("blocker:frontend-action-control"), signal);
+  }
+});
+
+test("收藏列表入口不会因普通文案误判为前端动作控件", () => {
+  for (const element of [
+    new MockElement({ href: "https://example.com/favorites", textContent: "我的收藏" }),
+    new MockElement({ href: "https://example.com/favorites", textContent: "Favorites" }),
+  ]) {
+    const facts = classifyAnchorNavigation(element as unknown as HTMLAnchorElement, "https://example.com/article/1");
+    const decision = resolveNavigationDecision(facts, createContext({ pageMode: "new-tab" }));
+
+    assert.equal(facts.capability.blockers.includes("frontend-action-control"), false);
+    assert.equal(decision.requestedDisposition, "new-tab");
+    assert.equal(decision.applied, true);
+  }
+});
+
+test("普通内容容器类名不会单独触发前端动作保护", () => {
+  const facts = classifyAnchorNavigation(
+    new MockElement({
+      href: "https://example.com/article/2",
+      className: "favorite-card",
+      textContent: "Favorite article",
+    }) as unknown as HTMLAnchorElement,
+    "https://example.com/article/1",
+  );
+
+  assert.equal(facts.capability.blockers.includes("frontend-action-control"), false);
+});
+
 test("敏感 GET action 进入认证支付表单，不能伪装成普通 GET", () => {
   const form = createForm({
     method: "GET",

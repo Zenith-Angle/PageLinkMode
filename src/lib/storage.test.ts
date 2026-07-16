@@ -14,17 +14,17 @@ import {
   upsertPersonalRule,
 } from "./storage";
 
-test("新安装使用 schema v4 和内容优先预设", () => {
+test("新安装使用 schema v4 和适中预设", () => {
   const state = createDefaultState();
   assert.equal(state.schemaVersion, 4);
-  assert.equal(state.presetId, "content");
+  assert.equal(state.presetId, "broad");
   assert.equal(state.globalCategoryRules["link-list-detail"], "new-tab");
   assert.equal(state.globalCategoryRules["link-pagination"], "preserve-native");
   assert.deepEqual(state.personalRules, []);
   assert.equal("globalMode" in state, false);
 });
 
-test("空 local 和空 Sync 的真正新安装直接写入内容优先默认状态", async () => {
+test("空 local 和空 Sync 的真正新安装直接写入适中默认状态", async () => {
   const localData: Record<string, unknown> = {};
   const syncData: Record<string, unknown> = {};
   let syncReads = 0;
@@ -33,12 +33,34 @@ test("空 local 和空 Sync 的真正新安装直接写入内容优先默认状�
   const state = await ensureState();
 
   assert.deepEqual(state, createDefaultState());
-  assert.equal(localData.presetId, "content");
+  assert.equal(localData.presetId, "broad");
   assert.equal(
     (localData.globalCategoryRules as ExtensionState["globalCategoryRules"])["open-same-origin"],
     "preserve-native",
   );
   assert.equal(syncReads, 1);
+});
+
+test("旧版默认内容规则在读取时识别为新的适中档且不改写分类值", async () => {
+  const previousContentRules = {
+    ...createDefaultState().globalCategoryRules,
+    "link-search-filter": "preserve-native" as const,
+    "link-image-gallery": "preserve-native" as const,
+    "link-spa-route": "preserve-native" as const,
+    "form-search-get": "preserve-native" as const,
+    "form-general-get": "preserve-native" as const,
+  };
+  const localData: Record<string, unknown> = {
+    ...createDefaultState(),
+    presetId: "content",
+    globalCategoryRules: previousContentRules,
+  };
+  installChromeStorageMock(localData, {});
+
+  const state = await readState();
+
+  assert.equal(state.presetId, "broad");
+  assert.deepEqual(state.globalCategoryRules, previousContentRules);
 });
 
 test("Sync 中存在有效旧键时仍执行旧配置迁移", async () => {

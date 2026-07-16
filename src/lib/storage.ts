@@ -48,6 +48,13 @@ const LEGACY_SYNC_KEYS = [
 const OBSOLETE_LOCAL_KEYS = ["globalMode", "takeoverScopeLevel"];
 const AUTHORIZED_SITES_KEY = "authorizedSites";
 const RISK_GRANTS_KEY = "riskGrants";
+const SELECTABLE_PRESET_IDS: Array<Exclude<BasicPresetId, "custom">> = [
+  "precise",
+  "content",
+  "broad",
+  "deep",
+  "widest",
+];
 
 type LegacyCategory =
   | "same-origin-content-link"
@@ -447,11 +454,14 @@ function parseV4State(
   quarantineSensitive: boolean,
   strictPersonalRules = false,
 ): ExtensionState {
-  const presetId = parsePresetId(value.presetId, "presetId", DEFAULT_PRESET_ID);
+  const storedPresetId = parsePresetId(value.presetId, "presetId", DEFAULT_PRESET_ID);
+  const globalCategoryRules = sanitizeGlobalCategoryRules(value.globalCategoryRules, storedPresetId);
+  // 预设分层调整后，按实际规则重新识别档位；完整自定义规则不会被覆盖。
+  const presetId = identifyPresetForRules(storedPresetId, globalCategoryRules);
   return {
     schemaVersion: 4,
     presetId,
-    globalCategoryRules: sanitizeGlobalCategoryRules(value.globalCategoryRules, presetId),
+    globalCategoryRules,
     siteCategoryRules: sanitizeSiteCategoryRules(value.siteCategoryRules),
     siteRules: sanitizeRuleMap(value.siteRules, "site"),
     pageRules: sanitizeRuleMap(value.pageRules, "page"),
@@ -848,6 +858,13 @@ function stableId(value: string): string {
 
 function isSameCategoryRules(left: CategoryRuleMap, right: CategoryRuleMap): boolean {
   return NAVIGATION_CATEGORY_ORDER.every((category) => left[category] === right[category]);
+}
+
+function identifyPresetForRules(storedPresetId: BasicPresetId, rules: CategoryRuleMap): BasicPresetId {
+  if (storedPresetId === "custom") return "custom";
+  if (isSameCategoryRules(rules, createPresetCategoryRules(storedPresetId))) return storedPresetId;
+  return SELECTABLE_PRESET_IDS.find((presetId) =>
+    isSameCategoryRules(rules, createPresetCategoryRules(presetId))) ?? "custom";
 }
 
 function parseBackupEnvelope(record: Record<string, unknown>): Record<string, unknown> | null {
