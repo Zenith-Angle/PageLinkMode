@@ -54,7 +54,7 @@ const GROUPS: Array<{ id: NavigationCategoryGroup; label: string }> = [
 ];
 
 const SEMANTICS: NavigationSemantic[] = [
-  "content", "site-root", "primary-navigation", "breadcrumb-tab", "list-detail",
+  "content", "site-root", "primary-navigation", "breadcrumb-tab", "forum-facet", "forum-navigation", "list-detail",
   "pagination", "content-sequence", "search-filter", "image-gallery", "document",
   "media", "spa-route", "auth-account", "payment-checkout", "popup", "unknown",
 ];
@@ -62,6 +62,7 @@ const SEMANTICS: NavigationSemantic[] = [
 const SEMANTIC_LABELS: Record<NavigationSemantic, string> = {
   content: "普通内容", "site-root": "首页/Logo", "primary-navigation": "主导航",
   "breadcrumb-tab": "面包屑/Tab", "list-detail": "列表详情", pagination: "分页",
+  "forum-facet": "论坛类别/标签筛选", "forum-navigation": "论坛帖子时间轴/定位",
   "content-sequence": "上一篇/下一篇", "search-filter": "搜索筛选", "image-gallery": "图片相册",
   document: "文档", media: "媒体", "spa-route": "SPA 路由", "auth-account": "认证账户",
   "payment-checkout": "支付结算", popup: "弹窗", unknown: "未知",

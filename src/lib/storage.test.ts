@@ -103,6 +103,8 @@ test("旧 v3 的 12 类与范围会实体化为 v4 分类值", () => {
   assert.equal(state.globalCategoryRules["link-same-origin"], "same-tab");
   assert.equal(state.globalCategoryRules["link-cross-site"], "new-tab");
   assert.equal(state.globalCategoryRules["link-primary-navigation"], "same-tab");
+  assert.equal(state.globalCategoryRules["link-forum-facet"], "same-tab");
+  assert.equal(state.globalCategoryRules["link-forum-navigation"], "preserve-native");
   assert.equal(state.globalCategoryRules["link-pagination"], "preserve-native");
   assert.equal(state.globalCategoryRules["form-general-get"], "preserve-native");
   assert.equal(state.globalCategoryRules["open-cross-site"], "preserve-native");
@@ -137,6 +139,18 @@ test("v4 站点和页面整体规则支持保持原生", () => {
   });
   assert.equal(state.siteRules["example.com"], "preserve-native");
   assert.equal(state.pageRules["https://example.com/path"], "preserve-native");
+});
+
+test("个性化规则和备份导入接受论坛语义", () => {
+  const imported = parseImportedState({
+    ...createDefaultState(),
+    personalRules: [makePersonalRule({
+      id: "forum-rule",
+      match: { semantics: ["forum-facet", "forum-navigation"] },
+    })],
+  });
+
+  assert.deepEqual(imported.personalRules[0]?.match.semantics, ["forum-facet", "forum-navigation"]);
 });
 
 test("导入备份时敏感规则会被隔离为禁用且风险授权不属于备份", () => {

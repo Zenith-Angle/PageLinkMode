@@ -27,8 +27,8 @@ export function getTakeoverScopeDefinition(level: TakeoverScopeLevel): TakeoverS
 export function getMinimumTakeoverScopeLevel(category: NavigationCategory): TakeoverScopeLevel {
   if (category === "link-same-origin") return 0;
   if (category === "link-same-site" || category === "link-cross-site" || category === "link-list-detail" || category === "link-document" || category === "link-media") return 1;
-  if (category === "link-site-root" || category === "link-primary-navigation" || category === "link-breadcrumb-tab") return 2;
-  if (category === "link-search-filter" || category === "link-image-gallery" || category === "link-spa-route" || category === "form-search-get" || category === "form-general-get") return 3;
+  if (category === "link-site-root" || category === "link-primary-navigation" || category === "link-breadcrumb-tab" || category === "link-forum-facet") return 2;
+  if (category === "link-forum-navigation" || category === "link-search-filter" || category === "link-image-gallery" || category === "link-spa-route" || category === "form-search-get" || category === "form-general-get") return 3;
   return 4;
 }
 

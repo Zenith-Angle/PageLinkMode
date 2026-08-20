@@ -32,6 +32,8 @@ export const NAVIGATION_CATEGORY_DEFINITIONS: NavigationCategoryDefinition[] = [
   define("link-site-root", "link-purpose", "首页与站点 Logo", "首页入口、站点 Logo 和返回主站的链接。", "链接"),
   define("link-primary-navigation", "link-purpose", "主导航与菜单", "页头、侧栏和主要导航区域中的站点导航。", "链接"),
   define("link-breadcrumb-tab", "link-purpose", "面包屑与页面 Tab", "面包屑、页面内视图 Tab 和局部导航。", "链接"),
+  define("link-forum-facet", "link-purpose", "论坛类别与标签筛选", "论坛话题列表中的类别、标签和局部筛选入口。", "链接"),
+  define("link-forum-navigation", "link-purpose", "论坛帖子时间轴/定位", "论坛帖子页的时间轴、帖子定位和局部阅读导航。", "链接"),
   define("link-list-detail", "link-purpose", "列表与卡片详情", "从列表、信息流或卡片进入内容详情。", "链接"),
   define("link-pagination", "link-purpose", "集合分页", "页码、上一页、下一页和首尾页。", "链接"),
   define("link-content-sequence", "link-purpose", "上一篇与下一篇", "文章、章节或媒体内容之间的顺序导航。", "链接"),
@@ -90,12 +92,14 @@ export function createPresetCategoryRules(preset: Exclude<BasicPresetId, "custom
     "link-site-root": "same-tab",
     "link-primary-navigation": "same-tab",
     "link-breadcrumb-tab": "same-tab",
+    "link-forum-facet": "same-tab",
   });
   if (preset === "broad") {
     return broad;
   }
 
   const deep = withActions(broad, {
+    "link-forum-navigation": "same-tab",
     "link-search-filter": "same-tab",
     "link-image-gallery": "new-tab",
     "link-spa-route": "same-tab",
@@ -110,6 +114,7 @@ export function createPresetCategoryRules(preset: Exclude<BasicPresetId, "custom
     // 翻页和顺序阅读会显著改变网站原生浏览节奏，只在最高档打开新标签。
     "link-pagination": "new-tab",
     "link-content-sequence": "new-tab",
+    "link-forum-navigation": "new-tab",
     "open-same-origin": "new-tab",
     "open-same-site": "new-tab",
     "open-cross-site": "new-tab",

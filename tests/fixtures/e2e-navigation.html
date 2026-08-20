@@ -4,6 +4,14 @@
 <body>
   <h1>Navigation matrix</h1>
   <p><a data-testid="plain-link" href="destination.html">Open destination</a></p>
+  <table>
+    <tbody>
+      <tr class="topic-list-item" data-topic-id="fixture-topic">
+        <td><a class="title raw-topic-link" href="destination.html?from=topic-row">Topic title</a></td>
+        <td data-testid="topic-row-blank">Topic metadata</td>
+      </tr>
+    </tbody>
+  </table>
   <p><a data-testid="cross-origin-link" href="http://127.0.0.1:4174/destination.html">Open other origin</a></p>
   <p><a data-testid="named-link" href="destination.html" target="fixture-window">Open named window</a></p>
   <p><a data-testid="download-link" href="download.txt" download>Download fixture</a></p>
@@ -30,6 +38,10 @@
       event.preventDefault();
       event.currentTarget.setAttribute('aria-pressed', 'true');
       document.querySelector('[data-testid="favorite-state"]').textContent = '已收藏';
+    });
+    document.querySelector('tr.topic-list-item').addEventListener('click', function (event) {
+      if (event.target.closest('a[href], button, input, select, textarea')) return;
+      window.location.assign(this.querySelector('a.title.raw-topic-link').href);
     });
   </script>
 </body>

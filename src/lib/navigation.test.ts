@@ -129,7 +129,7 @@ test("认证主机优先于 session 等内容路径进入高风险分类", () =>
   }
 });
 
-test("27 个基础分类均可由正交事实稳定映射", () => {
+test("29 个基础分类均可由正交事实稳定映射", () => {
   const cases: Array<[NavigationCategory, Partial<NavigationFacts>]> = [
     ["link-same-origin", { relation: "same-origin" }],
     ["link-same-site", { relation: "same-site" }],
@@ -137,6 +137,8 @@ test("27 个基础分类均可由正交事实稳定映射", () => {
     ["link-site-root", { semantics: ["site-root"] }],
     ["link-primary-navigation", { semantics: ["primary-navigation"] }],
     ["link-breadcrumb-tab", { semantics: ["breadcrumb-tab"] }],
+    ["link-forum-facet", { semantics: ["forum-facet", "search-filter", "breadcrumb-tab"] }],
+    ["link-forum-navigation", { semantics: ["forum-navigation", "pagination", "content-sequence", "breadcrumb-tab"] }],
     ["link-list-detail", { semantics: ["list-detail"] }],
     ["link-pagination", { semantics: ["pagination"] }],
     ["link-content-sequence", { semantics: ["content-sequence"] }],
@@ -186,6 +188,92 @@ test("链接语义覆盖首页、分页、文档、媒体和跨站普通内容",
     const facts = classifyAnchorNavigation(element as unknown as HTMLAnchorElement, base);
     assert.equal(classifyNavigationFacts(facts).category, expected);
   }
+});
+
+test("Discourse 类别/标签和帖子时间轴进入独立基础分类", () => {
+  const category = new MockElement({
+    href: "https://linux.do/c/feedback/2",
+    className: "badge-category__wrapper",
+    closestMatcher: (selector) => selector.includes(".topic-list-item") ? new MockElement() : null,
+  });
+  const timeline = new MockElement({
+    href: "https://linux.do/t/topic/123/1",
+    className: "start-date",
+    closestMatcher: (selector) => selector.includes(".start-date") || selector.includes(".timeline-date-wrapper")
+      ? new MockElement()
+      : null,
+  });
+
+  const categoryFacts = classifyAnchorNavigation(category as unknown as HTMLAnchorElement, "https://linux.do/");
+  assert.ok(categoryFacts.semantics.includes("forum-facet"));
+  assert.equal(classifyNavigationFacts(categoryFacts).category, "link-forum-facet");
+
+  const timelineFacts = classifyAnchorNavigation(timeline as unknown as HTMLAnchorElement, "https://linux.do/");
+  assert.ok(timelineFacts.semantics.includes("forum-navigation"));
+  assert.equal(classifyNavigationFacts(timelineFacts).category, "link-forum-navigation");
+  assert.equal(timelineFacts.capability.canRewrite, true);
+  assert.equal(timelineFacts.capability.blockers.includes("frontend-action-control"), false);
+  assert.equal(timelineFacts.evidence.includes("frontend-action:discourse-timeline-control"), false);
+
+  const broad = resolveNavigationDecision(timelineFacts, createContext());
+  const deep = resolveNavigationDecision(timelineFacts, createContext({ globalCategoryRules: {
+    ...createDefaultGlobalCategoryRules(), "link-forum-navigation": "same-tab",
+  } }));
+  assert.equal(broad.requestedDisposition, "preserve-native");
+  assert.equal(deep.requestedDisposition, "same-tab");
+
+  for (const element of [category]) {
+    const facts = classifyAnchorNavigation(element as unknown as HTMLAnchorElement, "https://linux.do/");
+    assert.ok(facts.semantics.includes("forum-facet"));
+    assert.equal(classifyNavigationFacts(facts).category, "link-forum-facet");
+  }
+});
+
+test("论坛选择器必须有 Discourse 话题上下文，避免误判普通页面", () => {
+  const blogDate = new MockElement({
+    href: "https://example.com/post/1",
+    className: "post-date",
+    closestMatcher: () => null,
+  });
+  const blogTag = new MockElement({
+    href: "https://example.com/tags/typescript",
+    className: "discourse-tag",
+    closestMatcher: () => null,
+  });
+
+  for (const element of [blogDate, blogTag]) {
+    const facts = classifyAnchorNavigation(element as unknown as HTMLAnchorElement, "https://example.com/");
+    assert.equal(facts.semantics.includes("forum-facet"), false);
+    assert.equal(facts.semantics.includes("forum-navigation"), false);
+  }
+});
+
+test("Discourse 话题标题仍保持列表详情语义", () => {
+  const title = new MockElement({
+    href: "https://linux.do/t/topic/123/1",
+    className: "title raw-link raw-topic-link",
+    closestMatcher: (selector) => selector.includes("[class*='list-item' i]") ? new MockElement() : null,
+  });
+  const facts = classifyAnchorNavigation(title as unknown as HTMLAnchorElement, "https://linux.do/");
+
+  assert.equal(facts.semantics.includes("breadcrumb-tab"), false);
+  assert.equal(classifyNavigationFacts(facts).category, "link-list-detail");
+});
+
+test("Discourse 引用回跳作为页面动作保持原生", () => {
+  const facts = classifyAnchorNavigation(
+    new MockElement({
+      href: "https://linux.do/t/topic/123",
+      className: "btn no-text btn-flat back",
+      attributes: { "aria-label": "转到引用的帖子" },
+      closestMatcher: (selector) => selector.includes(".quote-controls") ? new MockElement() : null,
+    }) as unknown as HTMLAnchorElement,
+    "https://linux.do/t/topic/123/4",
+  );
+
+  assert.ok(facts.capability.blockers.includes("frontend-action-control"));
+  assert.ok(facts.evidence.includes("frontend-action:discourse-quote-control"));
+  assert.equal(resolveNavigationDecision(facts, createContext({ pageMode: "new-tab" })).applied, false);
 });
 
 test("明确的前端动作控件在捕获阶段保持原生并留下可解释证据", () => {

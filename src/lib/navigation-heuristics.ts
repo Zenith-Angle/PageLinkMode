@@ -14,6 +14,25 @@ const PAGINATION_CONTAINER_SELECTORS = [
   "[aria-label*='page navigation' i]",
 ].join(", ");
 const PAGINATION_KEYWORD_HINTS = /(?:pagination|pager|page-numbers|上一页|下一页|前一页|后一页|首页|尾页|prev|next|previous|first|last)/i;
+// Discourse uses ordinary anchors for both content entries and local timeline/facet navigation.
+// Keep these signals narrow so topic titles remain list-detail links while the forum's own
+// category, tag and post-position controls stay in the current browsing context.
+const DISCOURSE_FORUM_FACET_SELECTORS = [
+  ".topic-list-item .badge-category__wrapper",
+  ".topic-list-item .discourse-tag",
+].join(", ");
+const DISCOURSE_FORUM_NAVIGATION_SELECTORS = [
+  ".timeline-date-wrapper .start-date",
+  ".timeline-date-wrapper .now-date",
+  ".topic-post .post-date",
+  ".timeline-container .fancy-title",
+  ".timeline-container .topic-link",
+].join(", ");
+const DISCOURSE_LOCAL_NAVIGATION_SELECTORS = [
+  DISCOURSE_FORUM_FACET_SELECTORS,
+  DISCOURSE_FORUM_NAVIGATION_SELECTORS,
+].join(", ");
+const DISCOURSE_QUOTE_CONTROL_SELECTORS = ".quote-controls";
 const IMAGE_VIEWER_CONTAINER_SELECTORS = [
   "dialog",
   "[role='dialog']",
@@ -66,6 +85,10 @@ export function getFrontendActionControlSignal(
   anchor: NavigableLinkElement,
   targetUrl: string,
 ): string | null {
+  if (anchor.closest(DISCOURSE_QUOTE_CONTROL_SELECTORS) !== null) {
+    return "discourse-quote-control";
+  }
+
   const role = readAttribute(anchor, "role")?.trim().toLowerCase() ?? "";
   if (role.split(/\s+/).includes("button")) {
     return "role=button";
@@ -191,8 +214,16 @@ export function isLikelyPrimaryNavigation(anchor: NavigableLinkElement): boolean
 
 export function isLikelyBreadcrumbTabNavigation(anchor: NavigableLinkElement): boolean {
   return anchor.closest(
-    "[aria-label*='breadcrumb' i], .breadcrumb, [class*='breadcrumb' i], [role='tablist'], [role='tab']",
+    `[aria-label*='breadcrumb' i], .breadcrumb, [class*='breadcrumb' i], [role='tablist'], [role='tab'], ${DISCOURSE_LOCAL_NAVIGATION_SELECTORS}`,
   ) !== null;
+}
+
+export function isLikelyForumFacetNavigation(anchor: NavigableLinkElement): boolean {
+  return anchor.closest(DISCOURSE_FORUM_FACET_SELECTORS) !== null;
+}
+
+export function isLikelyForumNavigation(anchor: NavigableLinkElement): boolean {
+  return anchor.closest(DISCOURSE_FORUM_NAVIGATION_SELECTORS) !== null;
 }
 
 export function isLikelyListDetailNavigation(anchor: NavigableLinkElement): boolean {

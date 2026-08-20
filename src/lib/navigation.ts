@@ -20,6 +20,8 @@ import type {
 } from "./types";
 import {
   isLikelyBreadcrumbTabNavigation,
+  isLikelyForumFacetNavigation,
+  isLikelyForumNavigation,
   isLikelyContentSequenceNavigation,
   isLikelyDocumentUrl,
   isLikelyImageViewerNavigation,
@@ -434,6 +436,8 @@ function categoryForFacts(facts: NavigationFacts): NavigationCategory {
   if (facts.semantics.includes("payment-checkout")) return "link-payment-checkout";
   if (facts.semantics.includes("auth-account")) return "link-auth-account";
   if (facts.semantics.includes("site-root")) return "link-site-root";
+  if (facts.semantics.includes("forum-facet")) return "link-forum-facet";
+  if (facts.semantics.includes("forum-navigation")) return "link-forum-navigation";
   if (facts.semantics.includes("pagination")) return "link-pagination";
   if (facts.semantics.includes("content-sequence")) return "link-content-sequence";
   if (facts.semantics.includes("search-filter")) return "link-search-filter";
@@ -489,6 +493,8 @@ function classifyAnchorSemantics(
     if (matched) semantics.push(semantic);
   };
   add("site-root", isSiteRootNavigation(targetUrl));
+  add("forum-facet", isLikelyForumFacetNavigation(anchor));
+  add("forum-navigation", isLikelyForumNavigation(anchor));
   add("content-sequence", isLikelyContentSequenceNavigation(anchor));
   add("pagination", isLikelyPaginationNavigation(anchor, targetUrl));
   add("search-filter", isLikelySearchFilterNavigation(anchor, targetUrl));

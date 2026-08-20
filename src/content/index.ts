@@ -17,7 +17,7 @@ import {
 } from "../lib/navigation";
 import { isHashOnlyNavigation, isSupportedPageUrl } from "../lib/url";
 import { getNavigableHref } from "../lib/navigable-link";
-import { getClosestAnchor, getSubmitForm } from "./dom";
+import { getClosestAnchor, getClosestDiscourseTopicAnchor, getSubmitForm } from "./dom";
 import {
   isAnchorNavigationAlreadyObserved,
   markAnchorNavigationObserved,
@@ -136,7 +136,7 @@ function onWindowAuxClick(event: MouseEvent): void {
 function handleAnchorEvent(event: MouseEvent, capture: boolean): void {
   if (!currentContext || event.isTrusted === false || isAnchorNavigationAlreadyObserved(event)) return;
   if (!capture && event.defaultPrevented) return;
-  const anchor = resolveNavigableAnchor(event);
+  const anchor = resolveNavigationAnchor(event);
   if (!anchor) return;
 
   const userIntent = event.button === 1
@@ -182,13 +182,14 @@ function onWindowSubmit(event: SubmitEvent): void {
   });
 }
 
-function resolveNavigableAnchor(event: MouseEvent): NavigableLinkElement | null {
+function resolveNavigationAnchor(event: MouseEvent): NavigableLinkElement | null {
   const anchor = getClosestAnchor(event.target, event.composedPath());
-  if (!anchor) return null;
-  const href = getNavigableHref(anchor);
+  const rowAnchor = anchor ?? getClosestDiscourseTopicAnchor(event.target, event.composedPath());
+  if (!rowAnchor) return null;
+  const href = getNavigableHref(rowAnchor);
   if (!href || /^javascript:/i.test(href)) return null;
-  if (isHashOnlyNavigation(window.location.href, href) && !isLikelyHashRoute(anchor, href)) return null;
-  return anchor;
+  if (isHashOnlyNavigation(window.location.href, href) && !isLikelyHashRoute(rowAnchor, href)) return null;
+  return rowAnchor;
 }
 
 async function navigateAnchor(href: string, decision: NavigationDecision): Promise<NavigationDecision> {

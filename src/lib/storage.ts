@@ -106,6 +106,8 @@ const LEGACY_CATEGORY_MAP: Record<NavigationCategory, LegacyCategory> = {
   "link-site-root": "site-shell-navigation",
   "link-primary-navigation": "site-shell-navigation",
   "link-breadcrumb-tab": "site-shell-navigation",
+  "link-forum-facet": "site-shell-navigation",
+  "link-forum-navigation": "pagination-navigation",
   "link-list-detail": "same-origin-content-link",
   "link-pagination": "pagination-navigation",
   "link-content-sequence": "pagination-navigation",
@@ -570,7 +572,7 @@ function createLegacyScopeMatch(scope: LegacyScopeLevel): PersonalRuleMatch {
     return { triggers: ["anchor"], relations: ["same-origin"], semantics: ["content", "list-detail", "document", "media", "spa-route"] };
   }
   if (scope === 1) {
-    return { triggers: ["anchor"], semantics: ["content", "site-root", "primary-navigation", "breadcrumb-tab", "list-detail", "document", "media", "spa-route"] };
+    return { triggers: ["anchor"], semantics: ["content", "site-root", "primary-navigation", "breadcrumb-tab", "forum-facet", "list-detail", "document", "media", "spa-route"] };
   }
   if (scope === 2) return { triggers: ["anchor"] };
   if (scope === 3) return { triggers: ["anchor", "form"] };
@@ -699,7 +701,7 @@ function parsePersonalRuleMatch(value: unknown, fieldName: string): PersonalRule
   if (record.targetUrl !== undefined) result.targetUrl = parseUrlMatcher(record.targetUrl, `${fieldName}.targetUrl`);
   result.relations = parseEnumArray(record.relations, ["same-document", "same-origin", "same-site", "cross-site"], `${fieldName}.relations`);
   result.triggers = parseEnumArray(record.triggers, ["anchor", "form", "window.open"], `${fieldName}.triggers`);
-  result.semantics = parseEnumArray(record.semantics, ["content", "site-root", "primary-navigation", "breadcrumb-tab", "list-detail", "pagination", "content-sequence", "search-filter", "image-gallery", "document", "media", "spa-route", "auth-account", "payment-checkout", "popup", "unknown"], `${fieldName}.semantics`);
+  result.semantics = parseEnumArray(record.semantics, ["content", "site-root", "primary-navigation", "breadcrumb-tab", "forum-facet", "forum-navigation", "list-detail", "pagination", "content-sequence", "search-filter", "image-gallery", "document", "media", "spa-route", "auth-account", "payment-checkout", "popup", "unknown"], `${fieldName}.semantics`);
   result.nativeTargets = parseEnumArray(record.nativeTargets, ["self", "blank", "named", "parent", "top", "unfenced-top"], `${fieldName}.nativeTargets`);
   result.frameContexts = parseEnumArray(record.frameContexts, ["top", "same-origin-frame", "cross-origin-frame"], `${fieldName}.frameContexts`);
   if (record.formMethods !== undefined) {

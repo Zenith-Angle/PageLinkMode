@@ -307,7 +307,7 @@ async function applyWidestPreset(options: Page): Promise<void> {
 test("Options 在桌面与窄屏保持紧凑比例且支持键盘操作", async ({ page, extensionId }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`chrome-extension://${extensionId}/src/options.html`);
-  await expect(page.locator(".category-row")).toHaveCount(27);
+  await expect(page.locator(".category-row")).toHaveCount(29);
 
   const layout = await page.locator(".options-layout").boundingBox();
   const sidebar = await page.locator(".workspace-sidebar").boundingBox();
@@ -558,7 +558,7 @@ test("Options 提供完整基础分类、预设和个性化规则工作流", asy
   page.on("pageerror", (error) => consoleErrors.push(error.message));
   await page.goto(`chrome-extension://${extensionId}/src/options.html`);
   await expect(page.getByRole("heading", { name: "规则工作台" })).toBeVisible();
-  await expect(page.locator(".category-row")).toHaveCount(27);
+  await expect(page.locator(".category-row")).toHaveCount(29);
   await expect(page.getByText("始终保持原生", { exact: true })).toBeVisible();
 
   const presetRange = page.locator("#basic-preset-range");
@@ -673,6 +673,14 @@ test("基础内容链接默认新标签，页面个性化规则可恢复原生",
   await expect(destination.getByTestId("destination")).toBeVisible();
   await expect(source).toHaveURL(`${FIXTURE}/e2e-navigation.html`);
   await destination.close();
+
+  const topicRowOpened = context.waitForEvent("page");
+  await source.getByTestId("topic-row-blank").click();
+  const topicDestination = await topicRowOpened;
+  await topicDestination.waitForLoadState();
+  await expect(topicDestination).toHaveURL(`${FIXTURE}/destination.html?from=topic-row`);
+  await expect(source).toHaveURL(`${FIXTURE}/e2e-navigation.html`);
+  await topicDestination.close();
 
   const pageKey = `${FIXTURE}/e2e-navigation.html`;
   const control = await context.newPage();

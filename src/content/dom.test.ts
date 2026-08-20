@@ -5,10 +5,22 @@ import type { NavigableLinkElement } from "../lib/types";
 class MockElement {
   parentElement: MockElement | null = null;
 
-  constructor(private readonly anchor: NavigableLinkElement | null = null) {}
+  constructor(
+    private readonly anchor: NavigableLinkElement | null = null,
+    private readonly topicRow: MockElement | null = null,
+    private readonly topicAnchor: HTMLAnchorElement | null = null,
+    private readonly control = false,
+  ) {}
 
-  closest(selector: string): NavigableLinkElement | null {
-    return selector.includes("a[href]") ? this.anchor : null;
+  closest(selector: string): any {
+    if (this.control && selector.includes("[role='button']")) return this;
+    if (selector.includes("a[href]")) return this.anchor;
+    if (selector.includes("tr.topic-list-item")) return this.topicRow;
+    return null;
+  }
+
+  querySelector<T>(): T | null {
+    return this.topicAnchor as T | null;
   }
 }
 
@@ -24,7 +36,7 @@ Object.assign(globalThis, {
   HTMLFormElement: MockFormElement,
 });
 
-const { getClosestAnchor } = await import("./dom");
+const { getClosestAnchor, getClosestDiscourseTopicAnchor } = await import("./dom");
 
 test("图像映射的 area href 进入标准链接识别链路", () => {
   const area = {
@@ -85,6 +97,36 @@ test("composedPath 未暴露内部节点时保持找不到链接，不穿透 clo
       shadowHost as unknown as EventTarget,
       [shadowHost] as unknown as EventTarget[],
     ),
+    null,
+  );
+});
+
+test("Discourse 话题行的空白区域复用标题链接作为导航目标", () => {
+  const title = {
+    href: "https://linux.do/t/topic/123/1",
+    localName: "a",
+    namespaceURI: "http://www.w3.org/1999/xhtml",
+  } as HTMLAnchorElement;
+  const row = new MockElement(null, null, title);
+  const whitespace = new MockElement(null, row);
+
+  assert.equal(
+    getClosestDiscourseTopicAnchor(whitespace as unknown as EventTarget, [whitespace] as unknown as EventTarget[]),
+    title,
+  );
+});
+
+test("Discourse 话题行中的动作控件不回退到标题链接", () => {
+  const title = {
+    href: "https://linux.do/t/topic/123/1",
+    localName: "a",
+    namespaceURI: "http://www.w3.org/1999/xhtml",
+  } as HTMLAnchorElement;
+  const row = new MockElement(null, null, title);
+  const action = new MockElement(null, row, null, true);
+
+  assert.equal(
+    getClosestDiscourseTopicAnchor(action as unknown as EventTarget, [action] as unknown as EventTarget[]),
     null,
   );
 });

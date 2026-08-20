@@ -11,7 +11,7 @@
 
 [![Repository](https://img.shields.io/badge/repository-PageLinkMode-181717?logo=github)](https://github.com/Zenith-Angle/PageLinkMode)
 [![Language](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Release](https://img.shields.io/badge/release-v0.6.1-0969DA)](https://github.com/Zenith-Angle/PageLinkMode/releases)
+[![Release](https://img.shields.io/badge/release-v0.6.2-0969DA)](https://github.com/Zenith-Angle/PageLinkMode/releases)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4)](https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3)
 [![License](https://img.shields.io/badge/license-MIT-2ea043)](https://github.com/Zenith-Angle/PageLinkMode/blob/main/LICENSE)
 
@@ -21,7 +21,7 @@
 
 ## 当前状态
 
-当前版本为 `0.6.1`。配置 schema v4、生产构建、扩展 E2E、稳定版 Chrome 主链路、包体扫描与 `dist`/ZIP 一致性均已完成验收。
+当前版本为 `0.6.2`。配置 schema v4、生产构建、扩展 E2E、稳定版 Chrome 主链路、包体扫描与 `dist`/ZIP 一致性均已完成验收。
 
 PageLinkMode 的核心模型已经由旧的“12 类 + 接管范围门禁”升级为：
 
@@ -41,12 +41,31 @@ PageLinkMode 的核心模型已经由旧的“12 类 + 接管范围门禁”升�
 
 站点覆写优先于全局分类，越具体的语义分类优先于普通的目标关系分类。未设置的站点子项继续继承全局结果。
 
-### 27 类导航
+### Discourse / linux.do 适配
+
+PageLinkMode 对 Discourse 话题列表和帖子页保留了更细的上下文边界：
+
+- `topic-list-item` 内的 `title raw-topic-link` 仍按列表详情处理，适合新标签打开；点击同一行的空白区域时，会复用这条标题链接的分类和目标，因此不会再出现标题新标签、空白区当前标签的分裂行为；
+- 话题列表中的类别与标签链接识别为“论坛类别与标签筛选”，不会被误判成帖子详情；
+- 时间轴首帖、末帖和帖子日期链接识别为“论坛帖子时间轴/定位”，可由基础预设或用户规则选择保持原生、同标签页或新标签页；
+- 引用回跳等帖子动作控件保持原生。
+
+如果你需要最大程度保留 Discourse 的滚动和阅读状态，可以在站点覆写里为精确 hostname `linux.do` 将论坛时间轴/定位、集合分页和上一篇/下一篇设置为“保持原生”。如果你需要统一标签行为，则可在基础分类或站点分类中把论坛帖子时间轴/定位设为同标签页或新标签页。
+
+| 分类 | `linux.do` 站点值 |
+| --- | --- |
+| 论坛帖子时间轴/定位 | 保持原生 |
+| 集合分页 | 保持原生 |
+| 上一篇与下一篇 | 保持原生 |
+
+这三项不会改变帖子标题的新标签行为；它们只覆盖帖子页和列表页的局部导航。
+
+### 29 类导航
 
 | 分组 | 分类 |
 | --- | --- |
 | 普通链接关系 | 同源、同站不同子域、跨站 |
-| 页面语义 | 首页/Logo、主导航、面包屑/Tab、列表详情、分页、上一篇/下一篇、搜索筛选排序、图片相册、PDF/文档、音视频、SPA/hash |
+| 页面语义 | 首页/Logo、主导航、面包屑/Tab、论坛类别与标签筛选、论坛帖子时间轴/定位、列表详情、分页、上一篇/下一篇、搜索筛选排序、图片相册、PDF/文档、音视频、SPA/hash |
 | 敏感链接 | 账户认证、支付结算 |
 | 表单 | 搜索 GET、普通 GET、非 GET、认证/支付表单 |
 | 脚本打开 | 同源、同站、跨站、图片、文档媒体、认证支付、弹窗/命名窗口 |
@@ -127,7 +146,7 @@ schema v4 配置只读写 `chrome.storage.local`。`0.6.0` 及后续版本首次
 
 Options 规则工作台包含六个区域：
 
-- 基础分类：查看 27 类、预览并应用预设、逐类修改全局值；
+- 基础分类：查看 29 类、预览并应用预设、逐类修改全局值；
 - 站点覆写：管理站点整体规则和分类继承；
 - 个性化规则：创建、排序、启停站点/页面例外及管理站点风险授权；
 - 调试记录：按站点查看实际决策结果；

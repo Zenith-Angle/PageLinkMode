@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PageLinkMode",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "按跳转分类接管网页内导航，支持全局、站点和单页规则。",
   "permissions": ["storage", "tabs", "scripting", "activeTab", "webNavigation"],
   "host_permissions": ["http://*/*", "https://*/*"],

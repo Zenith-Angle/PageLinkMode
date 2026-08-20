@@ -15,6 +15,29 @@ export function getClosestAnchor(
   return findClosestAnchor(target);
 }
 
+/**
+ * Discourse topic lists also navigate when the click lands on a non-link part
+ * of a topic row. Reuse the row's title anchor as the canonical target while
+ * leaving clicks on actual controls to the page.
+ */
+export function getClosestDiscourseTopicAnchor(
+  target: EventTarget | null,
+  composedPath: EventTarget[] = [],
+): HTMLAnchorElement | null {
+  const element = findClosestElement(composedPath) ?? (target ? findClosestElement([target]) : null);
+  if (
+    !element ||
+    element.closest(
+      "a[href], area[href], button, input, select, textarea, label, [role='button'], [data-action], [contenteditable='true']",
+    ) !== null
+  ) {
+    return null;
+  }
+
+  const row = element.closest("tr.topic-list-item[data-topic-id]");
+  return row?.querySelector<HTMLAnchorElement>("a.title.raw-topic-link[href], a[data-topic-id][href]") ?? null;
+}
+
 export function getSubmitForm(target: EventTarget | null): HTMLFormElement | null {
   if (target instanceof HTMLFormElement) {
     return target;
@@ -60,4 +83,12 @@ function findClosestAnchor(target: EventTarget | null): NavigableLinkElement | n
   }
 
   return candidate as NavigableLinkElement;
+}
+
+function findClosestElement(targets: EventTarget[]): Element | null {
+  for (const target of targets) {
+    const element = toElement(target);
+    if (element) return element;
+  }
+  return null;
 }

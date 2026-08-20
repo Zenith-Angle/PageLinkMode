@@ -5,18 +5,18 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-test("0.6.1 默认托管全部普通网站，并保持版本号一致", () => {
+test("0.6.2 默认托管全部普通网站，并保持版本号一致", () => {
   const manifest = readJson("public/manifest.json");
   const packageJson = readJson("package.json");
   const packageLock = readJson("package-lock.json");
 
   assert.deepEqual(manifest.host_permissions, ["http://*/*", "https://*/*"]);
   assert.equal(manifest.optional_host_permissions, undefined);
-  assert.equal(manifest.version, "0.6.1");
-  assert.equal(packageJson.version, "0.6.1");
-  assert.equal(packageLock.version, "0.6.1");
-  assert.equal(packageLock.packages[""].version, "0.6.1");
-  assert.match(readFileSync("README.md", "utf8"), /release-v0\.6\.1(?:-|\))/);
+  assert.equal(manifest.version, "0.6.2");
+  assert.equal(packageJson.version, "0.6.2");
+  assert.equal(packageLock.version, "0.6.2");
+  assert.equal(packageLock.packages[""].version, "0.6.2");
+  assert.match(readFileSync("README.md", "utf8"), /release-v0\.6\.2(?:-|\))/);
 });
 
 test("交付目录拒绝测试、日志、临时、环境变量和密钥类文件", async () => {

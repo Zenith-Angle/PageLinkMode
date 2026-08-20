@@ -30,7 +30,7 @@ test("五档资格层按使用频率单调覆盖全部 v4 基础分类", () => {
     const minimumLevel = getMinimumTakeoverScopeLevel(category);
     assert.equal(isCategoryWithinTakeoverScope(category, minimumLevel), true);
   }
-  assert.deepEqual(TAKEOVER_SCOPE_LEVELS.map(({ level }) => countCategoriesWithinTakeoverScope(level)), [1, 6, 9, 14, 27]);
+  assert.deepEqual(TAKEOVER_SCOPE_LEVELS.map(({ level }) => countCategoriesWithinTakeoverScope(level)), [1, 6, 10, 16, 29]);
 });
 
 test("敏感和硬原生分类保持保护，但 v4 锚点统一在 capture 阶段观察", () => {
@@ -62,7 +62,7 @@ test("五档预设按日常使用频率递增，适中档作为新安装默认�
     return NAVIGATION_CATEGORY_ORDER.filter((category) => rules[category] !== "preserve-native").length;
   });
 
-  assert.deepEqual(activeCounts, [1, 6, 9, 14, 21]);
+  assert.deepEqual(activeCounts, [1, 6, 10, 16, 23]);
 });
 
 test("适中档覆盖多数日常浏览，但翻页和上一篇下一篇保持网站原生", () => {
@@ -74,6 +74,8 @@ test("适中档覆盖多数日常浏览，但翻页和上一篇下一篇保持�
     "link-site-root": "same-tab",
     "link-primary-navigation": "same-tab",
     "link-breadcrumb-tab": "same-tab",
+    "link-forum-facet": "same-tab",
+    "link-forum-navigation": "preserve-native",
     "link-list-detail": "new-tab",
     "link-document": "new-tab",
     "link-media": "new-tab",
@@ -84,6 +86,12 @@ test("适中档覆盖多数日常浏览，但翻页和上一篇下一篇保持�
   for (const [category, action] of Object.entries(expected)) {
     assert.equal(rules[category as NavigationCategory], action, category);
   }
+});
+
+test("论坛时间轴按预设逐级开放，最广档才改为新标签", () => {
+  assert.equal(createPresetCategoryRules("broad")["link-forum-navigation"], "preserve-native");
+  assert.equal(createPresetCategoryRules("deep")["link-forum-navigation"], "same-tab");
+  assert.equal(createPresetCategoryRules("widest")["link-forum-navigation"], "new-tab");
 });
 
 test("翻页、上一篇下一篇和普通脚本打开只在最广档接管", () => {
